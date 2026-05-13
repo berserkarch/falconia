@@ -7,6 +7,7 @@ import (
 	"falconia/config"
 	"falconia/style"
 
+	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -16,9 +17,12 @@ type pkgCategory struct {
 }
 
 type pkgEntry struct {
-	name    string
-	desc    string
-	checked bool
+	name      string
+	desc      string
+	checked   bool
+	isHeader  bool
+	collapsed bool
+	level     int // nesting level
 }
 
 // PackagesModel is a categorised multiselect for extra packages.
@@ -28,85 +32,84 @@ type PackagesModel struct {
 	categories []pkgCategory
 	catIdx     int
 	pkgIdx     int
+	focused    int // 0: categories, 1: packages
+
+	scrollOffset int
+	pageSize     int
 }
 
 func defaultCategories() []pkgCategory {
 	return []pkgCategory{
 		{
-			name: "Audio",
+			name: "Browsers & Internet",
 			packages: []pkgEntry{
-				{"pipewire", "Modern audio server", false},
-				{"wireplumber", "PipeWire session manager", false},
-				{"pipewire-pulse", "PulseAudio compatibility", false},
-				{"pipewire-alsa", "ALSA compatibility", false},
-			},
-		},
-		{
-			name: "Networking",
-			packages: []pkgEntry{
-				{"iwd", "iNet Wireless Daemon (WiFi)", false},
-				{"openssh", "SSH client and server", false},
-				{"wget", "HTTP downloader", false},
-				{"curl", "URL transfer tool", false},
-			},
-		},
-		{
-			name: "Fonts",
-			packages: []pkgEntry{
-				{"noto-fonts", "Google Noto font family", false},
-				{"noto-fonts-emoji", "Noto emoji font", false},
-				{"ttf-jetbrains-mono", "JetBrains Mono programmer font", false},
-				{"ttf-firacode-nerd", "FiraCode Nerd Font", false},
+				{name: "Web Browsers", isHeader: true, level: 0},
+				{name: "firefox", desc: "Mozilla Firefox web browser", level: 1},
+				{name: "chromium", desc: "Chromium open-source browser", level: 1},
+				{name: "google-chrome", desc: "Google Chrome (AUR)", level: 1},
+				{name: "brave-bin", desc: "Brave Browser (AUR)", level: 1},
+				{name: "Lightweight Browsers", isHeader: true, level: 1},
+				{name: "falkon", desc: "KDE web browser", level: 2},
+				{name: "midori", desc: "Lightweight web browser", level: 2},
+				{name: "lynx", desc: "Text-based web browser", level: 2},
+				{name: "Communication", isHeader: true, level: 0},
+				{name: "discord", desc: "All-in-one voice and text chat", level: 1},
+				{name: "telegram-desktop", desc: "Telegram Desktop client", level: 1},
+				{name: "slack-desktop", desc: "Slack Desktop (AUR)", level: 1},
+				{name: "File Transfer", isHeader: true, level: 0},
+				{name: "transmission-qt", desc: "BitTorrent client (Qt)", level: 1},
+				{name: "qbittorrent", desc: "BitTorrent client (Qt6)", level: 1},
 			},
 		},
 		{
 			name: "Dev Tools",
 			packages: []pkgEntry{
-				{"git", "Version control", false},
-				{"docker", "Container runtime", false},
-				{"neovim", "Terminal text editor", false},
-				{"python", "Python 3 interpreter", false},
-				{"rustup", "Rust toolchain manager", false},
-				{"go", "Go programming language", false},
+				{name: "Version Control", isHeader: true},
+				{name: "git", desc: "Version control system", level: 1},
+				{name: "github-cli", desc: "GitHub CLI tool", level: 1},
+				{name: "Languages", isHeader: true},
+				{name: "Python", isHeader: true, level: 1},
+				{name: "python", desc: "Python 3 interpreter", level: 2},
+				{name: "python-pip", desc: "Python package installer", level: 2},
+				{name: "Go", isHeader: true, level: 1},
+				{name: "go", desc: "Go programming language", level: 2},
+				{name: "Rust", isHeader: true, level: 1},
+				{name: "rustup", desc: "Rust toolchain manager", level: 2},
+				{name: "Editors", isHeader: true},
+				{name: "neovim", desc: "Extensible terminal editor", level: 1},
+				{name: "visual-studio-code-bin", desc: "VS Code (AUR)", level: 1},
 			},
 		},
 		{
-			name: "Shell & Terminal",
+			name: "Services",
 			packages: []pkgEntry{
-				{"zsh", "Z shell", false},
-				{"fish", "Friendly interactive shell", false},
-				{"bash-completion", "Bash tab completions", false},
-				{"tmux", "Terminal multiplexer", false},
-				{"alacritty", "GPU-accelerated terminal", false},
-				{"kitty", "Feature-rich terminal", false},
+				{name: "System Daemons", isHeader: true},
+				{name: "docker.service", desc: "Container orchestration daemon", level: 1},
+				{name: "bluetooth.service", desc: "Bluetooth stack daemon", level: 1},
+				{name: "cups.service", desc: "Common Unix Printing System", level: 1},
+				{name: "Networking Services", isHeader: true},
+				{name: "sshd.service", desc: "OpenSSH server daemon", level: 1},
+				{name: "networkmanager.service", desc: "Network connection manager", level: 1},
+				{name: "tailscale.service", desc: "Zero config VPN", level: 1},
+				{name: "Databases", isHeader: true},
+				{name: "mariadb.service", desc: "MariaDB SQL database server", level: 1},
+				{name: "postgresql.service", desc: "PostgreSQL database server", level: 1},
+				{name: "redis.service", desc: "Advanced key-value store", level: 1},
 			},
 		},
 		{
-			name: "Utilities",
+			name: "Security",
 			packages: []pkgEntry{
-				{"htop", "Interactive process viewer", false},
-				{"btop", "Resource monitor", false},
-				{"bat", "cat with syntax highlighting", false},
-				{"ripgrep", "Fast recursive grep", false},
-				{"fzf", "Fuzzy finder", false},
-				{"fd", "Fast file finder", false},
-				{"eza", "Modern ls replacement", false},
-				{"unzip", "Zip extraction", false},
-				{"p7zip", "7-Zip archiver", false},
-			},
-		},
-		{
-			name: "Bluetooth",
-			packages: []pkgEntry{
-				{"bluez", "Bluetooth protocol stack", false},
-				{"bluez-utils", "Bluetooth CLI tools", false},
-			},
-		},
-		{
-			name: "Printing",
-			packages: []pkgEntry{
-				{"cups", "CUPS printing system", false},
-				{"cups-pdf", "Print to PDF", false},
+				{name: "Encryption", isHeader: true},
+				{name: "veracrypt", desc: "Open-source disk encryption tool", level: 1},
+				{name: "gnupg", desc: "GNU Privacy Guard", level: 1},
+				{name: "Password Managers", isHeader: true},
+				{name: "keepassxc", desc: "Community-driven password manager", level: 1},
+				{name: "bitwarden", desc: "Password management solution", level: 1},
+				{name: "Audit & Analysis", isHeader: true},
+				{name: "nmap", desc: "Network mapper", level: 1},
+				{name: "wireshark-qt", desc: "Network protocol analyzer", level: 1},
+				{name: "lynis", desc: "Security auditing tool", level: 1},
 			},
 		},
 	}
@@ -118,6 +121,9 @@ func NewPackages(cfg *config.InstallConfig, advanced bool) PackagesModel {
 	// Pre-check packages already in cfg
 	for ci := range cats {
 		for pi := range cats[ci].packages {
+			if cats[ci].packages[pi].isHeader {
+				continue
+			}
 			for _, ep := range cfg.ExtraPackages {
 				if ep == cats[ci].packages[pi].name {
 					cats[ci].packages[pi].checked = true
@@ -130,6 +136,8 @@ func NewPackages(cfg *config.InstallConfig, advanced bool) PackagesModel {
 		cfg:        cfg,
 		advanced:   advanced,
 		categories: cats,
+		pageSize:   15,
+		focused:    1, // Default to packages
 	}
 }
 
@@ -141,49 +149,73 @@ func (m PackagesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "esc":
 			return m, EmitBack()
-		case "up", "k", "shift+tab":
-			if m.pkgIdx > 0 {
-				m.pkgIdx--
-			} else if m.catIdx > 0 {
-				m.catIdx--
-				m.pkgIdx = len(m.categories[m.catIdx].packages) - 1
+		case "up", "k":
+			if m.focused == 0 {
+				if m.catIdx > 0 {
+					m.catIdx--
+					m.pkgIdx = 0
+					m.scrollOffset = 0
+				}
 			} else {
-				// wrap to last category, last package
-				m.catIdx = len(m.categories) - 1
-				m.pkgIdx = len(m.categories[m.catIdx].packages) - 1
+				m.moveCursor(-1)
+				m.fixScroll()
 			}
 
-		case "down", "j", "tab":
-			cat := m.categories[m.catIdx]
-			if m.pkgIdx < len(cat.packages)-1 {
-				m.pkgIdx++
-			} else if m.catIdx < len(m.categories)-1 {
-				m.catIdx++
-				m.pkgIdx = 0
+		case "down", "j":
+			if m.focused == 0 {
+				if m.catIdx < len(m.categories)-1 {
+					m.catIdx++
+					m.pkgIdx = 0
+					m.scrollOffset = 0
+				}
 			} else {
-				// wrap to first category, first package
-				m.catIdx = 0
-				m.pkgIdx = 0
+				m.moveCursor(1)
+				m.fixScroll()
 			}
+
+		case "tab":
+			m.focused = (m.focused + 1) % 2
+			return m, nil
+
+		case "shift+tab":
+			m.focused = (m.focused - 1 + 2) % 2
+			return m, nil
 
 		case "left", "h":
-			// previous category
-			if m.catIdx > 0 {
-				m.catIdx--
-				m.pkgIdx = 0
+			if m.focused == 1 {
+				pkg := m.categories[m.catIdx].packages[m.pkgIdx]
+				if pkg.isHeader && !pkg.collapsed {
+					m.categories[m.catIdx].packages[m.pkgIdx].collapsed = true
+				} else {
+					m.focused = 0
+				}
 			}
 
 		case "right", "l":
-			// next category
-			if m.catIdx < len(m.categories)-1 {
-				m.catIdx++
-				m.pkgIdx = 0
+			if m.focused == 0 {
+				m.focused = 1
+			} else {
+				pkg := m.categories[m.catIdx].packages[m.pkgIdx]
+				if pkg.isHeader && pkg.collapsed {
+					m.categories[m.catIdx].packages[m.pkgIdx].collapsed = false
+				}
 			}
 
 		case " ":
-			m.categories[m.catIdx].packages[m.pkgIdx].checked = !m.categories[m.catIdx].packages[m.pkgIdx].checked
+			if m.focused == 1 {
+				pkg := &m.categories[m.catIdx].packages[m.pkgIdx]
+				if pkg.isHeader {
+					pkg.collapsed = !pkg.collapsed
+				} else {
+					pkg.checked = !pkg.checked
+				}
+			}
 
 		case "enter":
+			if m.focused == 0 {
+				m.focused = 1
+				return m, nil
+			}
 			m.Save()
 			return m, EmitDone()
 		}
@@ -191,11 +223,62 @@ func (m PackagesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *PackagesModel) moveCursor(delta int) {
+	cat := m.categories[m.catIdx]
+	newIdx := m.pkgIdx
+
+	for {
+		newIdx += delta
+		if newIdx < 0 {
+			// Wrap to end
+			newIdx = len(cat.packages) - 1
+		} else if newIdx >= len(cat.packages) {
+			// Wrap to start
+			newIdx = 0
+		}
+
+		if m.isRowVisible(newIdx) {
+			m.pkgIdx = newIdx
+			break
+		}
+		
+		// If we've looped through everything and nothing is visible (shouldn't happen)
+		if newIdx == m.pkgIdx {
+			break
+		}
+	}
+}
+
+func (m PackagesModel) isRowVisible(idx int) bool {
+	cat := m.categories[m.catIdx]
+	pkg := cat.packages[idx]
+	
+	// Check all parent headers
+	for i := idx - 1; i >= 0; i-- {
+		parent := cat.packages[i]
+		if parent.isHeader && parent.level < pkg.level {
+			if parent.collapsed {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (m *PackagesModel) fixScroll() {
+	if m.pkgIdx < m.scrollOffset {
+		m.scrollOffset = m.pkgIdx
+	}
+	if m.pkgIdx >= m.scrollOffset+m.pageSize {
+		m.scrollOffset = m.pkgIdx - m.pageSize + 1
+	}
+}
+
 func (m PackagesModel) Save() {
 	var pkgs []string
 	for _, cat := range m.categories {
 		for _, p := range cat.packages {
-			if p.checked {
+			if p.checked && !p.isHeader {
 				pkgs = append(pkgs, p.name)
 			}
 		}
@@ -207,47 +290,108 @@ func (m PackagesModel) View() string {
 	var b strings.Builder
 	b.WriteString(style.StyleStepHeader.Render("08 — EXTRA PACKAGES") + "\n\n")
 
-	// Category tabs
+	// --- Category List (Left) ---
+	var catList strings.Builder
+	catWidth := 30
 	for i, cat := range m.categories {
-		if i == m.catIdx {
-			b.WriteString(style.StyleSelected.Render("["+cat.name+"]") + " ")
-		} else {
-			b.WriteString(style.StyleMuted.Render(" "+cat.name+" ") + " ")
-		}
-	}
-	b.WriteString("\n\n")
-
-	// Package list for active category
-	cat := m.categories[m.catIdx]
-	for pi, pkg := range cat.packages {
 		sel := "  "
-		if pi == m.pkgIdx {
+		catName := cat.name
+		if i == m.catIdx {
+			if m.focused == 0 {
+				sel = style.StyleSelected.Render("▶ ")
+				catName = style.StyleSelected.Render(cat.name)
+			} else {
+				sel = style.StyleKey.Render("● ")
+				catName = style.StyleKey.Render(cat.name)
+			}
+		} else {
+			catName = style.StyleMuted.Render(cat.name)
+		}
+		
+		line := sel + catName + "\n\n" // Extra spacing
+		catList.WriteString(line)
+	}
+	
+	catView := lipgloss.NewStyle().
+		Width(catWidth).
+		MarginRight(4).
+		PaddingTop(1).
+		Render(catList.String())
+
+	// --- Package List (Right) ---
+	var pkgList strings.Builder
+	cat := m.categories[m.catIdx]
+	
+	// Top indicator
+	if m.scrollOffset > 0 {
+		pkgList.WriteString(style.StyleMuted.Render("      ↑ more...") + "\n\n")
+	} else {
+		pkgList.WriteString("\n\n")
+	}
+
+	endIdx := m.scrollOffset + m.pageSize
+	if endIdx > len(cat.packages) {
+		endIdx = len(cat.packages)
+	}
+
+	for i := m.scrollOffset; i < endIdx; i++ {
+		if !m.isRowVisible(i) {
+			continue
+		}
+		pkg := cat.packages[i]
+		sel := "  "
+		if i == m.pkgIdx && m.focused == 1 {
 			sel = style.StyleSelected.Render("▶ ")
 		}
-		b.WriteString(sel + style.Checkbox(pkg.checked) + " " + style.StyleValue.Render(pkg.name))
-		if m.advanced {
-			b.WriteString("  " + style.StyleMuted.Render(pkg.desc))
+		
+		indent := strings.Repeat("  ", pkg.level)
+		if pkg.isHeader {
+			state := "▼"
+			if pkg.collapsed {
+				state = "▶"
+			}
+			pkgList.WriteString(sel + indent + style.StyleKey.Render(state+" "+pkg.name) + "\n\n")
+		} else {
+			pkgList.WriteString(sel + indent + style.Checkbox(pkg.checked) + " " + style.StyleValue.Render(pkg.name))
+			if m.advanced {
+				pkgList.WriteString("\n" + sel + indent + "    " + style.StyleMuted.Render(pkg.desc))
+			}
+			pkgList.WriteString("\n\n")
 		}
-		b.WriteString("\n")
 	}
+
+	// Bottom indicator
+	if endIdx < len(cat.packages) {
+		pkgList.WriteString(style.StyleMuted.Render("      ↓ more...") + "\n")
+	} else {
+		pkgList.WriteString("\n")
+	}
+	
+	pkgView := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, false, false, true).
+		BorderForeground(lipgloss.Color("#444444")). // Vertical divider
+		PaddingLeft(2).
+		Render(pkgList.String())
+
+	// Join side-by-side
+	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, catView, pkgView))
 
 	// Summary
 	total := 0
 	for _, c := range m.categories {
 		for _, p := range c.packages {
-			if p.checked {
+			if p.checked && !p.isHeader {
 				total++
 			}
 		}
 	}
-	b.WriteString("\n" + style.StyleMuted.Render("  ") + style.StyleGood.Render(strings.Repeat("", total)))
-	b.WriteString(style.StyleMuted.Render(fmt.Sprintf("  %d package(s) selected", total)) + "\n")
+	b.WriteString("\n\n" + style.StyleMuted.Render(fmt.Sprintf("  %d package(s) selected", total)) + "\n")
 
 	b.WriteString("\n")
 	b.WriteString(style.HelpRow(
-		"↑↓/tab", "item",
-		"←→", "category",
-		"space", "toggle",
+		"↑↓", "move",
+		"←→/tab", "focus/collapse",
+		"space", "toggle/collapse",
 		"ctrl+a", "advanced",
 		"enter", "done",
 		"esc", "back",
