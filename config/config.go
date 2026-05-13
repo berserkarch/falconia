@@ -13,6 +13,8 @@ type InstallConfig struct {
 	PartitionScheme string // "guided" | "manual"
 	Filesystem      string // "ext4" | "btrfs" | "xfs"
 	SwapSize        int    // MiB; 0 = no swap partition
+	EncryptDisk     bool
+	EncryptionPass  string // never written to disk or logged
 
 	// --- Network ---
 	NetworkMode string // "wifi" | "ethernet" | "skip"
