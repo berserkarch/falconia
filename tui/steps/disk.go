@@ -187,9 +187,9 @@ func (m DiskModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cycleRight()
 
 		case "enter":
-			// If we're on a text field, Enter should ideally move to the next field
+			// If we're on a field, Enter should ideally move to the next field
 			// unless it's the last field of the step.
-			lastField := diskFieldFS
+			lastField := diskFieldEncrypt
 			if m.encrypt {
 				lastField = diskFieldEncConf
 			}
