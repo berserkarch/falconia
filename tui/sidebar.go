@@ -1,0 +1,133 @@
+package tui
+
+import (
+	"falconia/config"
+	"falconia/style"
+	"fmt"
+	"strings"
+)
+
+// SidebarView renders the right-hand summary panel from the current config.
+func SidebarView(cfg *config.InstallConfig, step, total int, advanced bool) string {
+	var b strings.Builder
+
+	b.WriteString(style.StyleSidebarTitle.Render("SUMMARY") + "\n\n")
+
+	row := func(key, val string) {
+		if val == "" {
+			val = style.StyleMuted.Render("—")
+		}
+		b.WriteString(style.StyleKey.Render(fmt.Sprintf("%-16s", key)) + " " + style.StyleValue.Render(val) + "\n")
+	}
+
+	// Firmware
+	fw := cfg.Firmware
+	if fw == "uefi" {
+		fw = style.StyleGood.Render("UEFI")
+	} else if fw == "bios" {
+		fw = style.StyleWarn.Render("BIOS")
+	}
+	row("Firmware", fw)
+
+	// Disk
+	diskLabel := cfg.Disk
+	if cfg.DiskModel != "" {
+		diskLabel = cfg.DiskModel
+	}
+	row("Disk", diskLabel)
+	if cfg.Disk != "" {
+		row("Scheme", cfg.PartitionScheme)
+		row("FS", cfg.Filesystem)
+		if cfg.SwapSize > 0 {
+			row("Swap", fmt.Sprintf("%d MiB", cfg.SwapSize))
+		} else {
+			row("Swap", "none")
+		}
+	}
+
+	b.WriteString("\n")
+
+	// Network
+	switch cfg.NetworkMode {
+	case "wifi":
+		row("Network", "WiFi: "+cfg.WifiSSID)
+	case "ethernet":
+		row("Network", style.StyleGood.Render("Ethernet"))
+	case "skip":
+		row("Network", style.StyleWarn.Render("Skipped"))
+	default:
+		row("Network", "")
+	}
+
+	b.WriteString("\n")
+
+	// Locale
+	row("Timezone", cfg.Timezone)
+	row("Locale", cfg.Locale)
+	row("Keymap", cfg.Keymap)
+
+	b.WriteString("\n")
+
+	// Identity
+	row("Hostname", cfg.Hostname)
+
+	// Users
+	if len(cfg.Users) > 0 {
+		names := make([]string, len(cfg.Users))
+		for i, u := range cfg.Users {
+			names[i] = u.Username
+		}
+		row("Users", strings.Join(names, ", "))
+	} else {
+		row("Users", "")
+	}
+
+	b.WriteString("\n")
+
+	// Software
+	row("Kernel", cfg.Kernel)
+	de := cfg.DesktopEnv
+	if de == "" {
+		de = ""
+	}
+	row("Desktop", de)
+	row("Bootloader", cfg.Bootloader)
+
+	b.WriteString("\n")
+
+	// Post-install
+	var flags []string
+	if cfg.RankMirrors {
+		flags = append(flags, "mirrors")
+	}
+	if cfg.EnableSSH {
+		flags = append(flags, "ssh")
+	}
+	if cfg.EnableBluetooth {
+		flags = append(flags, "bt")
+	}
+	if cfg.EnableCups {
+		flags = append(flags, "cups")
+	}
+	if len(flags) > 0 {
+		row("Services", strings.Join(flags, " "))
+	}
+
+	if len(cfg.ExtraPackages) > 0 {
+		row("Packages", fmt.Sprintf("%d selected", len(cfg.ExtraPackages)))
+	}
+
+	b.WriteString("\n")
+
+	// Step counter
+	b.WriteString(style.StyleMuted.Render(fmt.Sprintf("Step %d / %d", step, total)) + "\n")
+
+	// Mode badge
+	if advanced {
+		b.WriteString(style.StyleModeAdvanced.Render(" advanced "))
+	} else {
+		b.WriteString(style.StyleModeSimple.Render(" simple "))
+	}
+
+	return style.StyleSidebar.Render(b.String())
+}
