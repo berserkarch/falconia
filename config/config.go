@@ -52,6 +52,7 @@ type InstallConfig struct {
 	EnableCups         bool
 	EnableSSH          bool
 	RankMirrors        bool
+	ExtraServices      map[string]bool // dynamic services
 
 	// --- Manual Partitioning ---
 	MountPoints map[string]string // mount point -> partition (e.g. "/" -> "/dev/sda3")
@@ -83,6 +84,7 @@ func Defaults() *InstallConfig {
 		RankMirrors:     true,
 		Hostname:        "berserkarch",
 		MountPoints:     make(map[string]string),
+		ExtraServices:   make(map[string]bool),
 	}
 }
 

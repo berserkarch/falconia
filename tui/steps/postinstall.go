@@ -16,11 +16,12 @@ type postOption struct {
 	set   func(bool)
 }
 
-// PostInstallModel handles post-install service/feature toggles.
 type PostInstallModel struct {
-	cfg     *config.InstallConfig
-	options []postOption
-	cursor  int
+	cfg          *config.InstallConfig
+	options      []postOption
+	cursor       int
+	scrollOffset int
+	pageSize     int
 }
 
 func NewPostInstall(cfg *config.InstallConfig) PostInstallModel {
@@ -55,8 +56,77 @@ func NewPostInstall(cfg *config.InstallConfig) PostInstallModel {
 			func() bool { return cfg.EnableCups },
 			func(v bool) { cfg.EnableCups = v },
 		},
+		{
+			"Enable Docker",
+			"Start docker.service on boot",
+			func() bool { return cfg.ExtraServices["docker"] },
+			func(v bool) { cfg.ExtraServices["docker"] = v },
+		},
+		{
+			"Enable Tailscale",
+			"Start tailscale.service on boot",
+			func() bool { return cfg.ExtraServices["tailscale"] },
+			func(v bool) { cfg.ExtraServices["tailscale"] = v },
+		},
+		{
+			"Enable Avahi (mDNS)",
+			"Start avahi-daemon.service on boot",
+			func() bool { return cfg.ExtraServices["avahi"] },
+			func(v bool) { cfg.ExtraServices["avahi"] = v },
+		},
+		{
+			"Enable TLP (Power management)",
+			"Start tlp.service on boot",
+			func() bool { return cfg.ExtraServices["tlp"] },
+			func(v bool) { cfg.ExtraServices["tlp"] = v },
+		},
+		{
+			"Enable UFW (Firewall)",
+			"Start ufw.service on boot",
+			func() bool { return cfg.ExtraServices["ufw"] },
+			func(v bool) { cfg.ExtraServices["ufw"] = v },
+		},
+		{
+			"Enable Flatpak Support",
+			"Install flatpak and configure repositories",
+			func() bool { return cfg.ExtraServices["flatpak"] },
+			func(v bool) { cfg.ExtraServices["flatpak"] = v },
+		},
+		{
+			"Enable Snap Support",
+			"Install snapd and start snapd.socket",
+			func() bool { return cfg.ExtraServices["snap"] },
+			func(v bool) { cfg.ExtraServices["snap"] = v },
+		},
+		{
+			"Enable Zram",
+			"Configure zram-generator for swap",
+			func() bool { return cfg.ExtraServices["zram"] },
+			func(v bool) { cfg.ExtraServices["zram"] = v },
+		},
+		{
+			"Enable Periodic Trim",
+			"Start fstrim.timer for SSD health",
+			func() bool { return cfg.ExtraServices["trim"] },
+			func(v bool) { cfg.ExtraServices["trim"] = v },
+		},
+		{
+			"Enable Microcode Updates",
+			"Install microcode for CPU security and stability",
+			func() bool { return cfg.ExtraServices["microcode"] },
+			func(v bool) { cfg.ExtraServices["microcode"] = v },
+		},
 	}
-	return PostInstallModel{cfg: cfg, options: opts}
+	// Set some defaults for the new ones
+	if _, ok := cfg.ExtraServices["microcode"]; !ok {
+		cfg.ExtraServices["microcode"] = true
+	}
+
+	return PostInstallModel{
+		cfg:      cfg,
+		options:  opts,
+		pageSize: 8, // Show 8 items at a time
+	}
 }
 
 func (m PostInstallModel) Init() tea.Cmd { return nil }
@@ -73,12 +143,14 @@ func (m PostInstallModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.cursor = len(m.options) - 1
 			}
+			m.fixScroll()
 		case "down", "j", "tab":
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
 			} else {
 				m.cursor = 0
 			}
+			m.fixScroll()
 		case " ":
 			opt := m.options[m.cursor]
 			// skip the always-on NetworkManager row
@@ -94,11 +166,33 @@ func (m PostInstallModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *PostInstallModel) fixScroll() {
+	if m.cursor < m.scrollOffset {
+		m.scrollOffset = m.cursor
+	}
+	if m.cursor >= m.scrollOffset+m.pageSize {
+		m.scrollOffset = m.cursor - m.pageSize + 1
+	}
+}
+
 func (m PostInstallModel) View() string {
 	var b strings.Builder
 	b.WriteString(style.StyleStepHeader.Render("10 — POST-INSTALL") + "\n\n")
 
-	for i, opt := range m.options {
+	// Top indicator
+	if m.scrollOffset > 0 {
+		b.WriteString(style.StyleMuted.Render("    ↑ more...") + "\n\n")
+	} else {
+		b.WriteString("\n\n")
+	}
+
+	endIdx := m.scrollOffset + m.pageSize
+	if endIdx > len(m.options) {
+		endIdx = len(m.options)
+	}
+
+	for i := m.scrollOffset; i < endIdx; i++ {
+		opt := m.options[i]
 		sel := "  "
 		if i == m.cursor {
 			sel = style.StyleSelected.Render("▶ ")
@@ -114,6 +208,13 @@ func (m PostInstallModel) View() string {
 
 		b.WriteString(sel + cb + " " + style.StyleValue.Render(opt.label) + "\n")
 		b.WriteString("       " + style.StyleMuted.Render(opt.desc) + "\n\n")
+	}
+
+	// Bottom indicator
+	if endIdx < len(m.options) {
+		b.WriteString(style.StyleMuted.Render("    ↓ more...") + "\n\n")
+	} else {
+		b.WriteString("\n\n")
 	}
 
 	b.WriteString(style.HelpRow("↑↓/tab", "item", "space", "toggle", "ctrl+a", "advanced", "enter", "next", "esc", "back"))
