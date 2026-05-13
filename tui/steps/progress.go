@@ -61,6 +61,9 @@ func buildSteps(cfg *config.InstallConfig) []installStep {
 		installStep{"Set locale", func(c *config.InstallConfig, log installer.LineHandler) error {
 			return installer.SetLocale(c, log)
 		}},
+		installStep{"Configure network", func(c *config.InstallConfig, log installer.LineHandler) error {
+			return installer.ConfigureNetwork(c, log)
+		}},
 		installStep{"Set hostname", func(c *config.InstallConfig, log installer.LineHandler) error {
 			return installer.SetHostname(c, log)
 		}},

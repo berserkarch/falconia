@@ -451,7 +451,7 @@ func (m UsersModel) View() string {
 		if i == m.shellIdx {
 			b.WriteString(style.StyleSelected.Render("[" + s + "]"))
 		} else {
-			b.WriteString(style.StyleMuted.Render(" "+s+" "))
+			b.WriteString(style.StyleMuted.Render(" " + s + " "))
 		}
 		b.WriteString("  ")
 	}

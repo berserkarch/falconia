@@ -7,8 +7,8 @@ import (
 	"falconia/config"
 	"falconia/style"
 
-	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type pkgCategory struct {
@@ -241,7 +241,7 @@ func (m *PackagesModel) moveCursor(delta int) {
 			m.pkgIdx = newIdx
 			break
 		}
-		
+
 		// If we've looped through everything and nothing is visible (shouldn't happen)
 		if newIdx == m.pkgIdx {
 			break
@@ -252,7 +252,7 @@ func (m *PackagesModel) moveCursor(delta int) {
 func (m PackagesModel) isRowVisible(idx int) bool {
 	cat := m.categories[m.catIdx]
 	pkg := cat.packages[idx]
-	
+
 	// Check all parent headers
 	for i := idx - 1; i >= 0; i-- {
 		parent := cat.packages[i]
@@ -295,7 +295,7 @@ func (m PackagesModel) View() string {
 	catWidth := 30
 	for i, cat := range m.categories {
 		sel := "  "
-		catName := cat.name
+		var catName string
 		if i == m.catIdx {
 			if m.focused == 0 {
 				sel = style.StyleSelected.Render("▶ ")
@@ -307,11 +307,11 @@ func (m PackagesModel) View() string {
 		} else {
 			catName = style.StyleMuted.Render(cat.name)
 		}
-		
+
 		line := sel + catName + "\n\n" // Extra spacing
 		catList.WriteString(line)
 	}
-	
+
 	catView := lipgloss.NewStyle().
 		Width(catWidth).
 		MarginRight(4).
@@ -321,7 +321,7 @@ func (m PackagesModel) View() string {
 	// --- Package List (Right) ---
 	var pkgList strings.Builder
 	cat := m.categories[m.catIdx]
-	
+
 	// Top indicator
 	if m.scrollOffset > 0 {
 		pkgList.WriteString(style.StyleMuted.Render("      ↑ more...") + "\n\n")
@@ -343,7 +343,7 @@ func (m PackagesModel) View() string {
 		if i == m.pkgIdx && m.focused == 1 {
 			sel = style.StyleSelected.Render("▶ ")
 		}
-		
+
 		indent := strings.Repeat("  ", pkg.level)
 		if pkg.isHeader {
 			state := "▼"
@@ -366,7 +366,7 @@ func (m PackagesModel) View() string {
 	} else {
 		pkgList.WriteString("\n")
 	}
-	
+
 	pkgView := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder(), false, false, false, true).
 		BorderForeground(lipgloss.Color("#444444")). // Vertical divider

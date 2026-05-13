@@ -67,6 +67,13 @@ func (m ConfirmModel) View() string {
 	row("Disk", fmt.Sprintf("%s — %s", cfg.Disk, cfg.DiskModel))
 	row("Partitioning", cfg.PartitionScheme)
 	row("Filesystem", cfg.Filesystem)
+
+	if cfg.EncryptDisk {
+		row("Encryption", "LUKS (Enabled)")
+	} else {
+		row("Encryption", "Disabled")
+	}
+
 	if cfg.SwapSize > 0 {
 		row("Swap", fmt.Sprintf("%d MiB", cfg.SwapSize))
 	} else {
@@ -122,6 +129,15 @@ func (m ConfirmModel) View() string {
 	if cfg.EnableCups {
 		flags = append(flags, "cups")
 	}
+
+	// Add dynamically enabled extra services
+	// sort keys to ensure deterministic output
+	for svc, enabled := range cfg.ExtraServices {
+		if enabled {
+			flags = append(flags, svc)
+		}
+	}
+
 	if len(flags) > 0 {
 		row("Services", m.formatFoldableList(flags))
 	}

@@ -9,12 +9,6 @@ import (
 	"strings"
 )
 
-// readFile reads a file and returns its contents as a string.
-func readFile(path string) (string, error) {
-	b, err := os.ReadFile(path)
-	return string(b), err
-}
-
 // writeChroot writes content to a path on the host (which maps inside /mnt).
 func writeChroot(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
@@ -62,9 +56,4 @@ func runWithStdin(log LineHandler, stdin io.Reader, name string, args ...string)
 		log(buf.String())
 	}
 	return nil
-}
-
-// contains checks if s contains substr (case-sensitive).
-func contains(s, substr string) bool {
-	return strings.Contains(s, substr)
 }

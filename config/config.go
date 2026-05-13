@@ -44,15 +44,15 @@ type InstallConfig struct {
 	ExtraPackages []string
 
 	// --- Bootloader ---
-	Bootloader     string // "grub" | "systemd-boot"
-	GrubTimeout    int    // seconds (GRUB only)
+	Bootloader  string // "grub" | "systemd-boot"
+	GrubTimeout int    // seconds (GRUB only)
 
 	// --- Post-install ---
-	EnableBluetooth    bool
-	EnableCups         bool
-	EnableSSH          bool
-	RankMirrors        bool
-	ExtraServices      map[string]bool // dynamic services
+	EnableBluetooth bool
+	EnableCups      bool
+	EnableSSH       bool
+	RankMirrors     bool
+	ExtraServices   map[string]bool // dynamic services
 
 	// --- Manual Partitioning ---
 	MountPoints map[string]string // mount point -> partition (e.g. "/" -> "/dev/sda3")

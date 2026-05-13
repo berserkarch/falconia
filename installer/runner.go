@@ -1,8 +1,8 @@
 package installer
 
 import (
-	"falconia/config"
 	"bufio"
+	"falconia/config"
 	"fmt"
 	"os"
 	"os/exec"

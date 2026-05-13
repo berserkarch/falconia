@@ -164,6 +164,25 @@ func FormatDisks(cfg *config.InstallConfig, log LineHandler) error {
 	}
 
 	var mkfsCmd []string
+
+	if cfg.EncryptDisk {
+		log("Encrypting root partition with LUKS...")
+		if !cfg.DryRun {
+			cmd := fmt.Sprintf("echo %q | cryptsetup -q luksFormat %s -d -", cfg.EncryptionPass, rootPart)
+			if err := RunSh(log, cmd); err != nil {
+				return fmt.Errorf("luksFormat: %w", err)
+			}
+			cmdOpen := fmt.Sprintf("echo %q | cryptsetup open %s cryptroot -d -", cfg.EncryptionPass, rootPart)
+			if err := RunSh(log, cmdOpen); err != nil {
+				return fmt.Errorf("luksOpen: %w", err)
+			}
+		} else {
+			log(styleGood("[DRY RUN] Would execute: ") + "cryptsetup luksFormat " + rootPart)
+			log(styleGood("[DRY RUN] Would execute: ") + "cryptsetup open " + rootPart + " cryptroot")
+		}
+		rootPart = "/dev/mapper/cryptroot"
+	}
+
 	switch cfg.Filesystem {
 	case "btrfs":
 		mkfsCmd = []string{"mkfs.btrfs", "-f", rootPart}
@@ -261,5 +280,11 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 // Cleanup unmounts everything under /mnt and disables swap.
 func Cleanup(cfg *config.InstallConfig, log LineHandler) error {
 	_ = RunDry(cfg, log, "swapoff", "-a")
-	return RunDry(cfg, log, "umount", "-R", "/mnt")
+	err := RunDry(cfg, log, "umount", "-R", "/mnt")
+	if cfg.EncryptDisk && !cfg.DryRun {
+		_ = RunDry(cfg, log, "cryptsetup", "close", "cryptroot")
+	} else if cfg.EncryptDisk && cfg.DryRun {
+		log(styleGood("[DRY RUN] Would execute: ") + "cryptsetup close cryptroot")
+	}
+	return err
 }

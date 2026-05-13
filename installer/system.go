@@ -48,6 +48,55 @@ func SetLocale(cfg *config.InstallConfig, log LineHandler) error {
 	}
 }
 
+// ConfigureNetwork sets up the Wi-Fi connection for NetworkManager.
+func ConfigureNetwork(cfg *config.InstallConfig, log LineHandler) error {
+	if cfg.NetworkMode != "wifi" || cfg.WifiSSID == "" {
+		return nil // Nothing to configure
+	}
+
+	log("Configuring Wi-Fi for SSID: " + cfg.WifiSSID)
+
+	if cfg.DryRun {
+		log("[DRY RUN] Would write NetworkManager connection profile for " + cfg.WifiSSID)
+		return nil
+	}
+
+	// Create NetworkManager connection profile directory
+	if err := RunSh(log, "mkdir -p /mnt/etc/NetworkManager/system-connections"); err != nil {
+		return err
+	}
+
+	// Write the connection profile
+	profile := fmt.Sprintf(`[connection]
+id=%s
+uuid=11111111-1111-1111-1111-111111111111
+type=wifi
+
+[wifi]
+mode=infrastructure
+ssid=%s
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk=%s
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=default
+method=auto
+`, cfg.WifiSSID, cfg.WifiSSID, cfg.WifiPass)
+
+	path := fmt.Sprintf("/mnt/etc/NetworkManager/system-connections/%s.nmconnection", cfg.WifiSSID)
+	if err := writeChroot(path, profile); err != nil {
+		return err
+	}
+
+	// Restrict permissions (NetworkManager requires 600)
+	return RunSh(log, fmt.Sprintf("chmod 600 %q", path))
+}
+
 // SetHostname writes /etc/hostname and /etc/hosts.
 func SetHostname(cfg *config.InstallConfig, log LineHandler) error {
 	if !cfg.DryRun {
