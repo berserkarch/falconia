@@ -168,7 +168,7 @@ func FormatDisks(cfg *config.InstallConfig, log LineHandler) error {
 	if cfg.EncryptDisk {
 		log("Encrypting root partition with LUKS...")
 		if !cfg.DryRun {
-			cmd := fmt.Sprintf("echo %q | cryptsetup -q luksFormat %s -d -", cfg.EncryptionPass, rootPart)
+			cmd := fmt.Sprintf("echo %q | cryptsetup -q luksFormat --type luks1 %s -d -", cfg.EncryptionPass, rootPart)
 			if err := RunSh(log, cmd); err != nil {
 				return fmt.Errorf("luksFormat: %w", err)
 			}

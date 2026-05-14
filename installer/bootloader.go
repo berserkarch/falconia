@@ -26,6 +26,57 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 		if err := RunChrootDry(cfg, log, "pacman", "-S", "--noconfirm", "efibootmgr"); err != nil {
 			return err
 		}
+	}
+
+	// Configure /etc/default/grub BEFORE grub-install.
+	// This is important because grub-install on Arch reads this file to
+	// decide whether to enable cryptodisk support in the core image.
+
+	// Set GRUB timeout
+	if err := RunChrootDry(
+		cfg,
+		log,
+		"sed", "-i",
+		fmt.Sprintf(`s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=%d/`, cfg.GrubTimeout),
+		"/etc/default/grub",
+	); err != nil {
+		return err
+	}
+
+	if cfg.EncryptDisk {
+		// Enable cryptodisk support
+		if !cfg.DryRun {
+			err := RunChroot(log, "bash", "-c", `grep -q "^#\?GRUB_ENABLE_CRYPTODISK=" /etc/default/grub && sed -i 's/^#\?GRUB_ENABLE_CRYPTODISK=.*/GRUB_ENABLE_CRYPTODISK=y/' /etc/default/grub || echo "GRUB_ENABLE_CRYPTODISK=y" >> /etc/default/grub`)
+			if err != nil {
+				return fmt.Errorf("enable cryptodisk: %w", err)
+			}
+		} else {
+			log(styleGood("[DRY RUN] Would enable GRUB_ENABLE_CRYPTODISK in /etc/default/grub"))
+		}
+
+		var uuid string
+		if !cfg.DryRun {
+			var err error
+			uuid, err = runOutput("blkid", "-s", "UUID", "-o", "value", rootPartition(cfg))
+			if err != nil {
+				return fmt.Errorf("blkid: %w", err)
+			}
+		} else {
+			uuid = "fake-uuid-1234"
+		}
+		cryptParam := fmt.Sprintf(`cryptdevice=UUID=%s:cryptroot root=/dev/mapper/cryptroot`, uuid)
+		if !cfg.DryRun {
+			err := RunChroot(log, "sed", "-i", fmt.Sprintf(`s|^\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"|\1 %s"|`, cryptParam), "/etc/default/grub")
+			if err != nil {
+				return err
+			}
+		} else {
+			log(styleGood("[DRY RUN] Would add cryptdevice to GRUB_CMDLINE_LINUX_DEFAULT"))
+		}
+	}
+
+	// Now run grub-install
+	if cfg.Firmware == "uefi" {
 		if err := RunChrootDry(
 			cfg,
 			log,
@@ -45,39 +96,6 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 			cfg.Disk,
 		); err != nil {
 			return fmt.Errorf("grub-install (BIOS): %w", err)
-		}
-	}
-
-	// Set GRUB timeout in /etc/default/grub
-	if err := RunChrootDry(
-		cfg,
-		log,
-		"sed", "-i",
-		fmt.Sprintf(`s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=%d/`, cfg.GrubTimeout),
-		"/etc/default/grub",
-	); err != nil {
-		return err
-	}
-
-	if cfg.EncryptDisk {
-		var uuid string
-		if !cfg.DryRun {
-			var err error
-			uuid, err = runOutput("blkid", "-s", "UUID", "-o", "value", rootPartition(cfg))
-			if err != nil {
-				return fmt.Errorf("blkid: %w", err)
-			}
-		} else {
-			uuid = "fake-uuid-1234"
-		}
-		cryptParam := fmt.Sprintf(`cryptdevice=UUID=%s:cryptroot root=/dev/mapper/cryptroot`, uuid)
-		if !cfg.DryRun {
-			err := RunChroot(log, "sed", "-i", fmt.Sprintf(`s|^\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"|\1 %s"|`, cryptParam), "/etc/default/grub")
-			if err != nil {
-				return err
-			}
-		} else {
-			log(styleGood("[DRY RUN] Would execute: ") + "sed to add cryptdevice to GRUB_CMDLINE_LINUX_DEFAULT")
 		}
 	}
 
