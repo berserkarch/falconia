@@ -47,7 +47,7 @@ func NewPartitionMapping(cfg *config.InstallConfig) PartitionMappingModel {
 
 	selections[pmFieldRoot] = findPart(cfg.MountPoints["/"])
 	selections[pmFieldBoot] = findPart(cfg.MountPoints["/boot/efi"])
-	// Swap is handled separately in config, but we can map it here
+	selections[pmFieldSwap] = findPart(cfg.MountPoints["swap"])
 
 	errMsg := ""
 	if err != nil {

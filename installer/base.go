@@ -59,12 +59,23 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		// Generate initramfs with dracut
 		log("Generating initramfs with dracut...")
 
-		// Find the actual kernel version string from /lib/modules
-		// We expect exactly one directory there since we just pacstrapped one kernel
+		// For encrypted installs, ensure dracut includes the crypt module.
+		// Running inside arch-chroot on a non-encrypted live ISO means dracut
+		// cannot auto-detect the target's dm-crypt root; we must be explicit.
+		if cfg.EncryptDisk {
+			confDir := "/mnt/etc/dracut.conf.d"
+			os.MkdirAll(confDir, 0755)
+			encConf := `add_dracutmodules+=" crypt "` + "\n"
+			if err := os.WriteFile(confDir+"/encryption.conf", []byte(encConf), 0644); err != nil {
+				log("Warning: failed to write dracut encryption config: " + err.Error())
+			}
+		}
+
+		// Find the actual kernel version string from /lib/modules.
+		// We expect exactly one directory there since we just pacstrapped one kernel.
 		files, err := os.ReadDir("/mnt/lib/modules")
 		kver := ""
 		if err == nil && len(files) > 0 {
-			// Find the one that matches or just take the first if only one
 			kver = files[0].Name()
 		}
 

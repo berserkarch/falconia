@@ -122,8 +122,21 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 		if err := RunChroot(log, "cp", initramfs, "/boot/efi/"); err != nil {
 			return fmt.Errorf("copy initramfs to ESP: %w", err)
 		}
+		// Copy microcode image to ESP if installed; it must also be on the ESP
+		// for systemd-boot to load it (unlike GRUB, which handles this automatically).
+		if cfg.ExtraServices["microcode"] {
+			for _, pkg := range detectMicrocode() {
+				src := fmt.Sprintf("/boot/%s.img", pkg)
+				if err := RunChroot(log, "cp", src, "/boot/efi/"); err != nil {
+					log(fmt.Sprintf("Warning: could not copy %s to ESP: %v", src, err))
+				}
+			}
+		}
 	} else {
 		log(styleGood("[DRY RUN] Would copy kernel and initramfs to /boot/efi/"))
+		if cfg.ExtraServices["microcode"] {
+			log(styleGood("[DRY RUN] Would copy microcode image to /boot/efi/"))
+		}
 	}
 
 	var uuid string
@@ -138,10 +151,14 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 		log(styleGood("[DRY RUN] Would lookup UUID for: ") + rootPartition(cfg))
 	}
 
-	loaderEntry := fmt.Sprintf(
-		"title   BerserkArch\nlinux   /vmlinuz-%s\ninitrd  /initramfs-%s.img\n",
-		cfg.Kernel, cfg.Kernel,
-	)
+	// Build loader entry. Microcode initrd must appear before the main initramfs.
+	loaderEntry := fmt.Sprintf("title   BerserkArch\nlinux   /vmlinuz-%s\n", cfg.Kernel)
+	if cfg.ExtraServices["microcode"] {
+		for _, pkg := range detectMicrocode() {
+			loaderEntry += fmt.Sprintf("initrd  /%s.img\n", pkg)
+		}
+	}
+	loaderEntry += fmt.Sprintf("initrd  /initramfs-%s.img\n", cfg.Kernel)
 
 	if cfg.EncryptDisk {
 		loaderEntry += fmt.Sprintf("options cryptdevice=UUID=%s:cryptroot root=/dev/mapper/cryptroot rw\n", uuid)

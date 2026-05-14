@@ -51,6 +51,15 @@ func InstallPackages(cfg *config.InstallConfig, log LineHandler) error {
 	if cfg.ExtraServices["zram"] {
 		pkgs = append(pkgs, "zram-generator")
 	}
+	if cfg.EnableBluetooth {
+		pkgs = append(pkgs, "bluez", "bluez-utils")
+	}
+	if cfg.EnableCups {
+		pkgs = append(pkgs, "cups")
+	}
+	if cfg.EnableSSH {
+		pkgs = append(pkgs, "openssh")
+	}
 
 	if len(pkgs) == 0 {
 		log("No extra packages selected, skipping.")

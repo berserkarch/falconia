@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"falconia/config"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -95,7 +96,7 @@ method=auto
 	}
 
 	// Restrict permissions (NetworkManager requires 600)
-	return RunSh(log, fmt.Sprintf("chmod 600 %q", path))
+	return os.Chmod(path, 0600)
 }
 
 func randomUUID() string {
