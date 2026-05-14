@@ -81,9 +81,10 @@ func listDisksFallback() ([]DiskInfo, error) {
 	return disks, nil
 }
 
-// CheckInternet returns nil if archlinux.org is reachable.
+// CheckInternet returns nil if an internet connection is detected.
+// We ping a reliable IP (1.1.1.1) to avoid DNS resolution delays.
 func CheckInternet(log LineHandler) error {
-	return Run(log, "ping", "-c", "1", "-W", "3", "archlinux.org")
+	return Run(log, "ping", "-c", "1", "-W", "1", "1.1.1.1")
 }
 
 // SyncClock syncs the system clock via timedatectl.

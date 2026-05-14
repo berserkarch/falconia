@@ -247,6 +247,10 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 		rootPart = disk + p + "2"
 	}
 
+	if cfg.EncryptDisk {
+		rootPart = "/dev/mapper/cryptroot"
+	}
+
 	// Mount root
 	if err := RunDry(cfg, log, "mount", rootPart, "/mnt"); err != nil {
 		return fmt.Errorf("mount root: %w", err)
