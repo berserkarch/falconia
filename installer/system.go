@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"crypto/rand"
 	"falconia/config"
 	"fmt"
 	"strings"
@@ -69,7 +70,7 @@ func ConfigureNetwork(cfg *config.InstallConfig, log LineHandler) error {
 	// Write the connection profile
 	profile := fmt.Sprintf(`[connection]
 id=%s
-uuid=11111111-1111-1111-1111-111111111111
+uuid=%s
 type=wifi
 
 [wifi]
@@ -86,7 +87,7 @@ method=auto
 [ipv6]
 addr-gen-mode=default
 method=auto
-`, cfg.WifiSSID, cfg.WifiSSID, cfg.WifiPass)
+`, cfg.WifiSSID, randomUUID(), cfg.WifiSSID, cfg.WifiPass)
 
 	path := fmt.Sprintf("/mnt/etc/NetworkManager/system-connections/%s.nmconnection", cfg.WifiSSID)
 	if err := writeChroot(path, profile); err != nil {
@@ -95,6 +96,14 @@ method=auto
 
 	// Restrict permissions (NetworkManager requires 600)
 	return RunSh(log, fmt.Sprintf("chmod 600 %q", path))
+}
+
+func randomUUID() string {
+	var b [16]byte
+	rand.Read(b[:])
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant bits
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 // SetHostname writes /etc/hostname and /etc/hosts.

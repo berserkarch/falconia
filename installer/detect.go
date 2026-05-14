@@ -27,25 +27,7 @@ func DetectFirmware() string {
 
 // ListDisks returns all physical block devices (type "disk") via lsblk.
 func ListDisks() ([]DiskInfo, error) {
-	out, err := exec.Command("lsblk", "-d", "-o", "PATH,MODEL,SIZE", "--noheadings", "--json").Output()
-	if err != nil {
-		// fallback: parse plain text
-		return listDisksFallback()
-	}
-	// simple line parser (avoid importing encoding/json for brevity)
-	var disks []DiskInfo
-	scanner := bufio.NewScanner(strings.NewReader(string(out)))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, `"path"`) {
-			// we'll just use the fallback parser; JSON parsing without import is fragile
-			break
-		}
-	}
-	if len(disks) == 0 {
-		return listDisksFallback()
-	}
-	return disks, nil
+	return listDisksFallback()
 }
 
 func listDisksFallback() ([]DiskInfo, error) {

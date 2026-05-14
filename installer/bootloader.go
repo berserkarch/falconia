@@ -170,7 +170,7 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 // rootPartition returns the root partition path for UUID lookup.
 func rootPartition(cfg *config.InstallConfig) string {
 	p := partSuffix(cfg.Disk)
-	if cfg.SwapSize > 0 || cfg.Firmware == "uefi" {
+	if cfg.SwapSize > 0 {
 		return cfg.Disk + p + "3"
 	}
 	return cfg.Disk + p + "2"
