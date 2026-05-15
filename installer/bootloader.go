@@ -50,6 +50,12 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 	if cfg.Hardware.HasNVMe {
 		baseParams += " nvme_load=YES"
 	}
+	for _, gpu := range cfg.Hardware.GPUs {
+		if gpu.Vendor == "nvidia" {
+			baseParams += " nvidia-drm.modeset=1"
+			break
+		}
+	}
 	if !cfg.DryRun {
 		err := RunChroot(log, "sed", "-i",
 			fmt.Sprintf(`s|^\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"|\1 %s"|`, baseParams),
@@ -196,6 +202,12 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 	extraParams := "quiet splash"
 	if cfg.Hardware.HasNVMe {
 		extraParams += " nvme_load=YES"
+	}
+	for _, gpu := range cfg.Hardware.GPUs {
+		if gpu.Vendor == "nvidia" {
+			extraParams += " nvidia-drm.modeset=1"
+			break
+		}
 	}
 	if cfg.EncryptDisk {
 		// No rd.luks.key here: the keyfile is not embedded in the initramfs for

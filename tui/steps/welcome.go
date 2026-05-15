@@ -121,7 +121,7 @@ func (m WelcomeModel) View() string {
 
 	// VM
 	if hw.VM != "none" && hw.VM != "" {
-		out += row("Environment", style.StyleWarn.Render(strings.Title(hw.VM)+" VM detected"))
+		out += row("Environment", style.StyleWarn.Render(capitalize(hw.VM)+" VM detected"))
 	}
 
 	out += "\n"
@@ -134,4 +134,11 @@ func (m WelcomeModel) View() string {
 func formatRAM(bytes int64) string {
 	gib := float64(bytes) / (1024 * 1024 * 1024)
 	return fmt.Sprintf("%.1f GiB", gib)
+}
+
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

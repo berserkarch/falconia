@@ -84,6 +84,9 @@ var stepRegistry = map[data.StepKey]func(*config.InstallConfig, installer.LineHa
 	data.StepInstallPkgs: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.InstallPackages(c, log)
 	},
+	data.StepInstallDrivers: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.InstallDrivers(c, log)
+	},
 	data.StepEnableServices: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.EnableServices(c, log)
 	},

@@ -27,6 +27,7 @@ const (
 	StepBootloader     StepKey = "bootloader"
 	StepInstallDesktop StepKey = "install-desktop"
 	StepInstallPkgs    StepKey = "install-packages"
+	StepInstallDrivers StepKey = "install-drivers"
 	StepEnableServices StepKey = "enable-services"
 	StepCleanup        StepKey = "cleanup"
 )
@@ -68,6 +69,15 @@ var Pipeline = []StepDef{
 		return c.DesktopEnv != "none" && c.DesktopEnv != ""
 	}},
 	{StepInstallPkgs, "Install extra packages", nil},
+	{StepInstallDrivers, "Install hardware drivers", func(c *config.InstallConfig) bool {
+		for _, gpu := range c.Hardware.GPUs {
+			if gpu.Vendor == "nvidia" {
+				return true
+			}
+		}
+		return c.Hardware.WiFi == "broadcom" ||
+			(c.Hardware.VM != "none" && c.Hardware.VM != "")
+	}},
 	{StepEnableServices, "Enable services", nil},
 	{StepCleanup, "Unmount & cleanup", nil},
 }

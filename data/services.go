@@ -28,6 +28,9 @@ var Enable = []string{
 	"firewalld",
 	"snapd.socket",
 
+	// NVIDIA — succeeds only if nvidia/nvidia-open was installed
+	"nvidia-persistenced",
+
 	// VM guest tools — succeed only inside the matching hypervisor
 	"vboxservice",
 	"vmtoolsd",
