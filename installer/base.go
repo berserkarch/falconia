@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"crypto/rand"
 	"falconia/config"
 	"fmt"
 	"os"
@@ -59,15 +60,37 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		// Generate initramfs with dracut
 		log("Generating initramfs with dracut...")
 
-		// For encrypted installs, ensure dracut includes the crypt module.
-		// Running inside arch-chroot on a non-encrypted live ISO means dracut
-		// cannot auto-detect the target's dm-crypt root; we must be explicit.
+		// For encrypted installs, ensure dracut includes the crypt module and
+		// embeds the keyfile so the initramfs can open LUKS without a second prompt.
 		if cfg.EncryptDisk {
 			confDir := "/mnt/etc/dracut.conf.d"
 			os.MkdirAll(confDir, 0755)
-			encConf := `add_dracutmodules+=" crypt "` + "\n"
+			encConf := "add_dracutmodules+=\" crypt \"\n" +
+				"install_items+=\" /crypto_keyfile.bin \"\n"
 			if err := os.WriteFile(confDir+"/encryption.conf", []byte(encConf), 0644); err != nil {
 				return fmt.Errorf("write dracut encryption config: %w", err)
+			}
+
+			// Generate a random keyfile and register it as a second LUKS key slot.
+			// GRUB prompts for the passphrase once (to read kernel + initramfs from the
+			// encrypted partition). The initramfs then finds the embedded keyfile and
+			// unlocks LUKS silently — no second prompt for the user.
+			log("Generating LUKS keyfile to eliminate double passphrase prompt...")
+			keyfile := make([]byte, 512)
+			if _, err := rand.Read(keyfile); err != nil {
+				return fmt.Errorf("generate luks keyfile: %w", err)
+			}
+			// mode 0000: root can still read it (bypasses DAC); normal users cannot.
+			if err := os.WriteFile("/mnt/crypto_keyfile.bin", keyfile, 0000); err != nil {
+				return fmt.Errorf("write luks keyfile: %w", err)
+			}
+			// Authorize with the passphrase (no trailing newline, matching luksFormat)
+			// to add the keyfile bytes as a new LUKS key slot.
+			lukspart := rootPartition(cfg)
+			if err := runWithStdin(log, strings.NewReader(cfg.EncryptionPass),
+				"cryptsetup", "luksAddKey", "--key-file=-", lukspart, "/mnt/crypto_keyfile.bin",
+			); err != nil {
+				return fmt.Errorf("luksAddKey: %w", err)
 			}
 		}
 
@@ -101,6 +124,9 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		}
 	} else {
 		log(styleGood("[DRY RUN] Would execute: ") + "dracut --force /boot/initramfs-" + cfg.Kernel + ".img <kver>")
+		if cfg.EncryptDisk {
+			log(styleGood("[DRY RUN] Would generate /mnt/crypto_keyfile.bin and add as LUKS key slot"))
+		}
 	}
 
 	return nil
@@ -140,8 +166,10 @@ func GenCrypttab(cfg *config.InstallConfig, log LineHandler) error {
 		return fmt.Errorf("blkid for crypttab: %w", err)
 	}
 
-	content := "# <name>\t<device>\t\t\t\t<password>\t<options>\n"
-	content += fmt.Sprintf("cryptroot\tUUID=%s\t\tnone\t\tluks\n", uuid)
+	content := "# <name>\t<device>\t\t\t\t<password>\t\t\t<options>\n"
+	// /crypto_keyfile.bin is embedded in the initramfs by dracut; systemd-cryptsetup
+	// reads it from the initramfs to unlock LUKS without prompting a second time.
+	content += fmt.Sprintf("cryptroot\tUUID=%s\t\t/crypto_keyfile.bin\tluks\n", uuid)
 	log("$ writing /mnt/etc/crypttab")
 	return writeChroot("/mnt/etc/crypttab", content)
 }

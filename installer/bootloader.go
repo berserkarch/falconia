@@ -67,7 +67,7 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 		}
 		// dracut reads rd.luks.uuid/rd.luks.name, NOT cryptdevice= (mkinitcpio syntax).
 		// rd.luks.name maps the UUID to the /dev/mapper/cryptroot name used by root=.
-		cryptParam := fmt.Sprintf(`rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot`, uuid, uuid)
+		cryptParam := fmt.Sprintf(`rd.luks.uuid=%s rd.luks.name=%s=cryptroot rd.luks.key=/crypto_keyfile.bin root=/dev/mapper/cryptroot`, uuid, uuid)
 		if !cfg.DryRun {
 			err := RunChroot(log, "sed", "-i", fmt.Sprintf(`s|^\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"|\1 %s"|`, cryptParam), "/etc/default/grub")
 			if err != nil {
@@ -180,7 +180,7 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 
 	var kernelOpts string
 	if cfg.EncryptDisk {
-		kernelOpts = fmt.Sprintf("rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot rw", uuid, uuid)
+		kernelOpts = fmt.Sprintf("rd.luks.uuid=%s rd.luks.name=%s=cryptroot rd.luks.key=/crypto_keyfile.bin root=/dev/mapper/cryptroot rw", uuid, uuid)
 	} else {
 		kernelOpts = fmt.Sprintf("root=UUID=%s rw", uuid)
 	}

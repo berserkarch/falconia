@@ -327,9 +327,14 @@ func (m DiskModel) Save() {
 	schemes := []string{"guided", "manual"}
 	m.cfg.PartitionScheme = schemes[m.schemeIdx]
 	m.cfg.Filesystem = fsOptions[m.fsIdx]
-	m.cfg.EncryptDisk = m.encrypt
-	if m.encrypt {
-		m.cfg.EncryptionPass = m.passInput.Value()
+	// Encryption is not supported with manual partitioning: FormatDisks and
+	// MountDisks skip LUKS setup in manual mode, so cfg.EncryptDisk must be
+	// false to avoid building a broken bootloader config (wrong rd.luks.uuid).
+	m.cfg.EncryptDisk = m.encrypt && m.cfg.PartitionScheme != "manual"
+	if m.cfg.EncryptDisk {
+		// Trim so the stored key matches what validate() checked; a stray leading
+		// space would pass validation (trimmed != "") but corrupt the LUKS key.
+		m.cfg.EncryptionPass = strings.TrimSpace(m.passInput.Value())
 	} else {
 		m.cfg.EncryptionPass = ""
 	}
