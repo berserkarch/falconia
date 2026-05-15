@@ -233,6 +233,8 @@ Driven by `data.Pipeline`. `buildSteps()` in `progress.go` iterates `data.Pipeli
 
 **Soft steps** log a yellow warning on failure and continue — the install does not abort.
 
+The progress screen uses a **sliding window of 8** steps (`windowSize=8`, `completedShown=2`). Steps outside the window are summarised as `↑ N completed` / `↓ N pending`. The log viewport is 12 rows tall.
+
 | # | Label | Condition | Soft |
 |---|---|---|---|
 | 1 | Verify internet | always | — |
@@ -274,6 +276,8 @@ RunChrootDry(cfg, log, "pacman", "-S", "vim") // arch-chroot, DryRun-aware
 runWithStdin(log, reader, "cryptsetup", ...)  // piped stdin (passwords)
 runOutput("blkid", "-s", "UUID", ...)         // capture stdout
 ```
+
+Use `RunChrootDry` for chroot commands — never bare `RunChroot` — so dry-run works. `RunChrootSh` was removed (dead code; use `RunChroot(log, "/bin/sh", "-c", script)` directly if needed).
 
 ### hardware.go — Detection
 
@@ -336,7 +340,7 @@ systemd-boot writes `/mnt/etc/kernel/cmdline` so future `kernel-install` invocat
 
 **`InstallPackages`** — installs only `cfg.ExtraPackages` (what the user picked in the packages step). No flag-based additions.
 
-**`EnableServices`** — iterates `data.Enable`, then `data.Disable`, then sets `graphical.target`. No conditionals anywhere.
+**`EnableServices`** — iterates `data.Enable`, then `data.Disable`, then sets `graphical.target`. No conditionals anywhere. Failures are logged as `Warning: could not enable <svc>: <error>` and execution continues.
 
 **`PostInstallCleanup`** — final housekeeping, always runs before unmounting:
 - `systemd-machine-id-setup` in chroot — replaces the live ISO's machine ID with a fresh one
@@ -377,7 +381,7 @@ Runs before pacstrap so the BerserkArch repo config is in place when packages ar
 style.StyleStepHeader     // bold section headers
 style.StyleKey            // field labels
 style.StyleValue          // field values
-style.StyleSelected       // highlighted / active element
+style.StyleSelected       // highlighted / active element (list cursors, running step)
 style.StyleMuted          // secondary / dimmed text
 style.StyleGood           // green (dry-run prefix, success)
 style.StyleWarn           // yellow warning
@@ -388,6 +392,21 @@ style.StyleButtonActive / StyleButtonInactive / StyleButtonDanger
 style.Checkbox(checked bool) string
 style.HelpRow("key", "action", ...) string
 style.ProgressBar(width int, pct float64) string
+
+// Inline option toggles (e.g. guided / manual, ext4 / btrfs, yes / no):
+style.ToggleOn(s string) string   // filled blue pill — legible on true-color AND 16-color TTY
+style.ToggleOff(s string) string  // muted dim text
+```
+
+**Do not** use `StyleSelected.Render("["+s+"]")` for inline toggles. On a 16-color TTY `StyleSelected` (blue) and `StyleMuted` (grey) map to the same ANSI color, making the active option indistinguishable. Use `ToggleOn`/`ToggleOff` instead — currently used in `disk.go`, `network.go`, `users.go`.
+
+### Lipgloss `\n` rule
+
+Never put `\n` inside a `Render()` call. lipgloss splits on `\n` and emits trailing ANSI reset codes that bleed into the next rendered element, causing visible horizontal misalignment:
+
+```go
+style.StyleMuted.Render("text") + "\n"   // correct
+style.StyleMuted.Render("text\n")        // WRONG — shifts the following element right
 ```
 
 ---

@@ -43,6 +43,7 @@ Every installer function respects `cfg.DryRun`. The full Phase 2 pipeline must b
 - Welcome screen shows detected hardware: CPU, GPU + driver decision, WiFi, RAM, NVMe, VM type
 - Packages step reads categories from `data.ExtraCategories` (equivalent to Calamares `netinstall.yaml`)
 - No services toggle screen — services are fully automatic
+- Inline option toggles (`guided/manual`, `ext4/btrfs`, `yes/no`, shell picker) use `style.ToggleOn`/`style.ToggleOff` — background-fill highlight that works on both true-color and 16-color TTY
 
 ### Installer (Phase 2)
 - Guided partitioning: UEFI (EFI + optional swap + root) and BIOS, NVMe/mmcblk suffix, `partprobe` + `udevadm settle`
@@ -60,6 +61,10 @@ Every installer function respects `cfg.DryRun`. The full Phase 2 pipeline must b
 - Windows detection: `DetectWindows()` runs `os-prober`, falls back to checking `/mnt/boot/efi/EFI/Microsoft/Boot/bootmgfw.efi`; result stored in `cfg.WindowsEFIPath`
 - Post-install cleanup: `systemd-machine-id-setup`, delete `.pacnew` files, write `journald.conf.d/00-persistence.conf`
 - Pipeline resilience: `SyncClock` and `RankMirrors` are Soft steps (warn and continue on failure); `CheckInternet` retries 3× with 3 s timeout before failing
+- Progress screen uses a sliding window of 8 steps (2 completed visible above current); steps outside the window shown as `↑ N completed` / `↓ N pending`
+- `EnableServices` logs full error message (service name + error string) on failure
+- `Cleanup` uses `RunDry` for `cryptsetup close` unconditionally (no redundant DryRun guard)
+- `RunChrootSh` removed — was never called anywhere
 
 ---
 
