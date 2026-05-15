@@ -49,6 +49,9 @@ func buildSteps(cfg *config.InstallConfig) []installStep {
 		installStep{"Mount filesystems", func(c *config.InstallConfig, log installer.LineHandler) error {
 			return installer.MountDisks(c, log)
 		}},
+		installStep{"Copy live environment files", func(c *config.InstallConfig, log installer.LineHandler) error {
+			return installer.CopyLiveFiles(c, log)
+		}},
 		installStep{"Install base system (pacstrap)", func(c *config.InstallConfig, log installer.LineHandler) error {
 			return installer.Pacstrap(c, log)
 		}},

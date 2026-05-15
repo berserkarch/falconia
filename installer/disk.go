@@ -21,9 +21,25 @@ func PartitionDisk(cfg *config.InstallConfig, log LineHandler) error {
 	}
 
 	if cfg.Firmware == "uefi" {
-		return partitionUEFI(cfg, log)
+		if err := partitionUEFI(cfg, log); err != nil {
+			return err
+		}
+	} else {
+		if err := partitionBIOS(cfg, log); err != nil {
+			return err
+		}
 	}
-	return partitionBIOS(cfg, log)
+
+	// Re-read partition table and wait for udev to create the new device nodes.
+	// Without this, mkfs may run against stale nodes (e.g. an old LUKS partition)
+	// before the kernel has seen the new layout.
+	if !cfg.DryRun {
+		_ = Run(log, "partprobe", disk)
+		_ = Run(log, "udevadm", "settle")
+	} else {
+		log(styleGood("[DRY RUN] Would execute: ") + "partprobe " + disk + " && udevadm settle")
+	}
+	return nil
 }
 
 // partitionUEFI creates:

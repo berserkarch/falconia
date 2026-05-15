@@ -31,7 +31,8 @@ func ListDisks() ([]DiskInfo, error) {
 }
 
 func listDisksFallback() ([]DiskInfo, error) {
-	out, err := exec.Command("lsblk", "-d", "-o", "PATH,MODEL,SIZE", "--noheadings").Output()
+	// -e 7: exclude loop devices (major 7); -e 11: exclude optical drives (major 11)
+	out, err := exec.Command("lsblk", "-d", "-e", "7,11", "-o", "PATH,MODEL,SIZE", "--noheadings").Output()
 	if err != nil {
 		return nil, fmt.Errorf("lsblk: %w", err)
 	}

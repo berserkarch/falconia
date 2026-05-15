@@ -92,7 +92,7 @@ const (
 	userFieldAdd
 )
 
-var shellOptions = []string{"/bin/bash", "/bin/zsh", "/bin/fish"}
+var shellOptions = []string{"/bin/zsh", "/bin/bash", "/bin/fish"}
 
 // UsersModel handles root password and user creation.
 type UsersModel struct {
