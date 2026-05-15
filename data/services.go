@@ -1,44 +1,43 @@
 package data
 
-// AlwaysEnable are enabled on every installation regardless of config.
-// Sourced from BerserkArch Calamares services-systemd.conf.
-var AlwaysEnable = []string{
+// Enable is the complete list of systemd units to enable on every install.
+// Each is attempted unconditionally — if the unit doesn't exist because the
+// package wasn't installed, systemctl enable fails silently (warning only).
+var Enable = []string{
+	// Core system
 	"NetworkManager",
 	"systemd-timesyncd",
 	"power-profiles-daemon",
 	"fstrim.timer",
 	"auditd",
-}
 
-// AlwaysDisable are explicitly disabled on every installation.
-// bluetooth is off by default; users enable it via the postinstall step.
-var AlwaysDisable = []string{
+	// Display managers — only the installed one will succeed
+	"gdm",
+	"sddm",
+	"lightdm",
+
+	// User-installed services — succeed only if the package was selected
+	"sshd",
+	"cups",
 	"bluetooth",
+	"docker",
+	"tailscaled",
+	"avahi-daemon",
+	"tlp",
+	"ufw",
+	"firewalld",
+	"snapd.socket",
+
+	// VM guest tools — succeed only inside the matching hypervisor
+	"vboxservice",
+	"vmtoolsd",
+	"vmware-vmblock-fuse",
+	"qemu-guest-agent",
+	"spice-vdagentd",
 }
 
-// DisplayManagerByDE maps a desktop environment to its display manager service.
-var DisplayManagerByDE = map[string]string{
-	"kde":      "sddm",
-	"gnome":    "sddm",
-	"xfce":     "sddm",
-	"cinnamon": "lightdm",
-	"hyprland": "sddm",
-	"i3":       "lightdm",
-}
-
-// ByServiceFlag maps ExtraServices keys and the EnableX bool field names to
-// the systemd unit(s) they activate.
-// Keys that need no service unit (e.g. "microcode") are simply absent.
-var ByServiceFlag = map[string][]string{
-	"bluetooth": {"bluetooth"},
-	"cups":      {"cups"},
-	"ssh":       {"sshd"},
-	"docker":    {"docker"},
-	"tailscale": {"tailscaled"},
-	"avahi":     {"avahi-daemon"},
-	"tlp":       {"tlp"},
-	"ufw":       {"ufw"},
-	"firewalld": {"firewalld"},
-	"snap":      {"snapd.socket"},
-	"trim":      {"fstrim.timer"},
+// Disable is the complete list of systemd units to disable on every install.
+var Disable = []string{
+	"bluetooth",  // off by default; user enables manually post-install if needed
+	"pacman-init", // live-ISO only, must not run on installed system
 }

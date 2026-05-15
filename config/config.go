@@ -70,11 +70,7 @@ type InstallConfig struct {
 	GrubTimeout int    // seconds (GRUB only)
 
 	// --- Post-install ---
-	EnableBluetooth bool
-	EnableCups      bool
-	EnableSSH       bool
-	RankMirrors     bool
-	ExtraServices   map[string]bool // dynamic services
+	RankMirrors bool
 
 	// --- Manual Partitioning ---
 	MountPoints map[string]string // mount point -> partition (e.g. "/" -> "/dev/sda3")
@@ -103,10 +99,9 @@ func Defaults() *InstallConfig {
 		DesktopEnv:      "none",
 		Bootloader:      "grub",
 		GrubTimeout:     5,
-		RankMirrors:     true,
-		Hostname:        "berserkarch",
-		MountPoints:     make(map[string]string),
-		ExtraServices:   make(map[string]bool),
+		RankMirrors: true,
+		Hostname:    "berserkarch",
+		MountPoints: make(map[string]string),
 	}
 }
 
