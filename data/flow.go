@@ -68,7 +68,6 @@ var Pipeline = []StepDef{
 	{Key: StepConfigNetwork, Label: "Configure network"},
 	{Key: StepSetHostname, Label: "Set hostname"},
 	{Key: StepRootPassword, Label: "Set root password"},
-	{Key: StepCreateUsers, Label: "Create users"},
 	{Key: StepDetectWindows, Label: "Detect other OS", Soft: true},
 	{Key: StepBootloader, Label: "Install bootloader"},
 	{Key: StepInstallDesktop, Label: "Install desktop environment", When: func(c *config.InstallConfig) bool {
@@ -84,6 +83,7 @@ var Pipeline = []StepDef{
 		return c.Hardware.WiFi == "broadcom" ||
 			(c.Hardware.VM != "none" && c.Hardware.VM != "")
 	}},
+	{Key: StepCreateUsers, Label: "Create users"},
 	{Key: StepEnableServices, Label: "Enable services"},
 	{Key: StepPostCleanup, Label: "Post-install cleanup"},
 	{Key: StepCleanup, Label: "Unmount & cleanup"},

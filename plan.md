@@ -237,12 +237,12 @@ Steps marked **Soft** log a warning and continue on failure instead of aborting.
 | 13 | `config-network` | Configure network | always | — |
 | 14 | `set-hostname` | Set hostname | always | — |
 | 15 | `root-password` | Set root password | always | — |
-| 16 | `create-users` | Create users | always | — |
-| 17 | `detect-windows` | Detect other OS | always | ✓ |
-| 18 | `bootloader` | Install bootloader | always | — |
-| 19 | `install-desktop` | Install desktop environment | `cfg.DesktopEnv != "none"` | — |
-| 20 | `install-packages` | Install extra packages | always | — |
-| 21 | `install-drivers` | Install hardware drivers | NVIDIA/Broadcom/VM detected | — |
+| 16 | `detect-windows` | Detect other OS | always | ✓ |
+| 17 | `bootloader` | Install bootloader | always | — |
+| 18 | `install-desktop` | Install desktop environment | `cfg.DesktopEnv != "none"` | — |
+| 19 | `install-packages` | Install extra packages | always | — |
+| 20 | `install-drivers` | Install hardware drivers | NVIDIA/Broadcom/VM detected | — |
+| 21 | `create-users` | Create users | always | — |
 | 22 | `enable-services` | Enable services | always | — |
 | 23 | `post-cleanup` | Post-install cleanup | always | — |
 | 24 | `cleanup` | Unmount & cleanup | always | — |
