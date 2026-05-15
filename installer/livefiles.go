@@ -14,7 +14,7 @@ import (
 // Add entries here as new requirements arise.
 var liveFiles = []string{
 	"/etc/pacman.conf",
-	"/etc/dracut.conf.d/berserkarch.conf",
+	// "/etc/dracut.conf.d/berserkarch.conf",
 }
 
 // CopyLiveFiles copies each path in liveFiles from the live environment into
