@@ -51,7 +51,7 @@ func (m ConfirmModel) View() string {
 	cfg := m.cfg
 	var b strings.Builder
 
-	b.WriteString(style.StyleStepHeader.Render("11 — CONFIRM INSTALLATION") + "\n\n")
+	b.WriteString(style.StyleStepHeader.Render("CONFIRM INSTALLATION") + "\n\n")
 
 	row := func(key, val string) {
 		k := fmt.Sprintf("%-18s", key)

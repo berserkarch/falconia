@@ -161,7 +161,7 @@ var CommonDE = []string{
 	"pipewire",
 	"pipewire-pulse",
 	"pipewire-alsa",
-	"pipewire-jack",
+	"jack2",
 	"wireplumber",
 	// Desktop integration
 	"xdg-user-dirs",

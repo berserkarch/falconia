@@ -136,7 +136,6 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 	return nil
 }
 
-
 // GenCrypttab writes /mnt/etc/crypttab for LUKS-encrypted installs.
 // The running system's systemd-cryptsetup-generator reads this file; it is
 // also required by some post-install tools (e.g. cryptsetup-initramfs helpers)

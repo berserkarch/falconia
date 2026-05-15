@@ -19,7 +19,6 @@ var Enable = []string{
 	// User-installed services — succeed only if the package was selected
 	"sshd",
 	"cups",
-	"bluetooth",
 	"docker",
 	"tailscaled",
 	"avahi-daemon",

@@ -59,8 +59,11 @@ func installGPUDrivers(cfg *config.InstallConfig, log LineHandler) error {
 		// Rebuild initramfs so the nvidia module is embedded
 		log("Rebuilding initramfs for NVIDIA...")
 		kver := detectKver()
+		if kver == "" {
+			kver = cfg.Kernel
+		}
 		outputPath := fmt.Sprintf("/boot/initramfs-%s.img", cfg.Kernel)
-		if err := RunChroot(log, "dracut", "--force", outputPath, kver); err != nil {
+		if err := RunChrootDry(cfg, log, "dracut", "--force", outputPath, kver); err != nil {
 			log(fmt.Sprintf("Warning: dracut rebuild after NVIDIA: %v", err))
 		}
 		// Regenerate GRUB config to pick up the new initramfs
