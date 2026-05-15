@@ -122,6 +122,30 @@ func detectMicrocode() []string {
 	return nil
 }
 
+// GenCrypttab writes /mnt/etc/crypttab for LUKS-encrypted installs.
+// The running system's systemd-cryptsetup-generator reads this file; it is
+// also required by some post-install tools (e.g. cryptsetup-initramfs helpers)
+// to know which devices are encrypted and under what mapper names.
+func GenCrypttab(cfg *config.InstallConfig, log LineHandler) error {
+	if !cfg.EncryptDisk {
+		return nil
+	}
+	if cfg.DryRun {
+		log(styleGood("[DRY RUN] Would write: ") + "/mnt/etc/crypttab")
+		return nil
+	}
+
+	uuid, err := runOutput("blkid", "-s", "UUID", "-o", "value", rootPartition(cfg))
+	if err != nil {
+		return fmt.Errorf("blkid for crypttab: %w", err)
+	}
+
+	content := "# <name>\t<device>\t\t\t\t<password>\t<options>\n"
+	content += fmt.Sprintf("cryptroot\tUUID=%s\t\tnone\t\tluks\n", uuid)
+	log("$ writing /mnt/etc/crypttab")
+	return writeChroot("/mnt/etc/crypttab", content)
+}
+
 // GenFstab generates /mnt/etc/fstab.
 func GenFstab(cfg *config.InstallConfig, log LineHandler) error {
 	if cfg.DryRun {

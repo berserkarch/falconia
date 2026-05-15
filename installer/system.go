@@ -14,7 +14,23 @@ func SetTimezone(cfg *config.InstallConfig, log LineHandler) error {
 	if err := RunChrootDry(cfg, log, "ln", "-sf", link, "/etc/localtime"); err != nil {
 		return err
 	}
-	return RunChrootDry(cfg, log, "hwclock", "--systohc")
+	// Write /etc/timezone as a plain-text fallback; the symlink at /etc/localtime
+	// is authoritative on Arch, but some tools (tzdata, Python's zoneinfo module)
+	// read this file when the symlink target is ambiguous.
+	if !cfg.DryRun {
+		if err := writeChroot("/mnt/etc/timezone", cfg.Timezone+"\n"); err != nil {
+			return fmt.Errorf("write /etc/timezone: %w", err)
+		}
+	} else {
+		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/etc/timezone")
+	}
+	// Sync the hardware clock; fall back to the ISA bus method for machines whose
+	// kernel RTC driver is broken or absent (some older or embedded hardware).
+	if err := RunChrootDry(cfg, log, "hwclock", "--systohc"); err != nil {
+		log("Warning: hwclock --systohc failed, retrying via ISA bus...")
+		return RunChrootDry(cfg, log, "hwclock", "--systohc", "--directisa")
+	}
+	return nil
 }
 
 // SetLocale writes /etc/locale.gen and generates locales.

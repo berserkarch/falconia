@@ -55,6 +55,9 @@ func buildSteps(cfg *config.InstallConfig) []installStep {
 		installStep{"Generate fstab", func(c *config.InstallConfig, log installer.LineHandler) error {
 			return installer.GenFstab(c, log)
 		}},
+		installStep{"Write crypttab", func(c *config.InstallConfig, log installer.LineHandler) error {
+			return installer.GenCrypttab(c, log)
+		}},
 		installStep{"Set timezone", func(c *config.InstallConfig, log installer.LineHandler) error {
 			return installer.SetTimezone(c, log)
 		}},

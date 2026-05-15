@@ -2,6 +2,7 @@ package installer
 
 import (
 	"fmt"
+	"os"
 
 	"falconia/config"
 )
@@ -89,6 +90,21 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 		); err != nil {
 			return fmt.Errorf("grub-install (UEFI): %w", err)
 		}
+		// Install to the standard removable path (EFI/BOOT/BOOTX64.EFI) as well.
+		// Many UEFI firmware implementations ignore NVRAM boot entries entirely and
+		// only scan the removable fallback path, so this makes the system bootable
+		// on that hardware without any manual NVRAM manipulation.
+		if err := RunChrootDry(
+			cfg,
+			log,
+			"grub-install",
+			"--target=x86_64-efi",
+			"--efi-directory=/boot/efi",
+			"--bootloader-id=GRUB",
+			"--removable",
+		); err != nil {
+			log(fmt.Sprintf("Warning: grub-install removable fallback: %v", err))
+		}
 	} else {
 		if err := RunChrootDry(
 			cfg,
@@ -162,18 +178,28 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 	}
 	loaderEntry += fmt.Sprintf("initrd  /initramfs-%s.img\n", cfg.Kernel)
 
+	var kernelOpts string
 	if cfg.EncryptDisk {
-		loaderEntry += fmt.Sprintf("options rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot rw\n", uuid, uuid)
+		kernelOpts = fmt.Sprintf("rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot rw", uuid, uuid)
 	} else {
-		loaderEntry += fmt.Sprintf("options root=UUID=%s rw\n", uuid)
+		kernelOpts = fmt.Sprintf("root=UUID=%s rw", uuid)
 	}
+	loaderEntry += "options " + kernelOpts + "\n"
 
 	if !cfg.DryRun {
 		if err := writeChroot("/mnt/boot/efi/loader/entries/arch.conf", loaderEntry); err != nil {
 			return err
 		}
+		// Write /etc/kernel/cmdline so future kernel-install invocations (triggered by
+		// kernel package upgrades) generate new boot entries with the correct parameters.
+		// Without this file, updated kernels would boot without LUKS/root params.
+		os.MkdirAll("/mnt/etc/kernel", 0755)
+		if err := writeChroot("/mnt/etc/kernel/cmdline", kernelOpts+"\n"); err != nil {
+			log("Warning: could not write /etc/kernel/cmdline: " + err.Error())
+		}
 	} else {
 		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/boot/efi/loader/entries/arch.conf")
+		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/etc/kernel/cmdline")
 	}
 
 	loaderConf := fmt.Sprintf("default arch\ntimeout %d\nconsole-mode max\neditor no\n", cfg.GrubTimeout)
