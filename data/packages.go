@@ -101,6 +101,8 @@ var Base = []string{
 	"blackarch-mirrorlist",
 	"chaotic-mirrorlist",
 	// BerserkArch meta packages
+	"ttf-jetbrains-mono-nerd",
+	"ttf-firacode-nerd",
 	"plymouth",
 	"python-pipx",
 	"berserk-hooks",

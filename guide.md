@@ -22,9 +22,14 @@ sudo ./falconia
 
 ```
 falconia/
-├── main.go                      # Entry point
+├── main.go                      # Entry point — hardware/firmware detection, TUI launch
 ├── config/
-│   └── config.go                # InstallConfig struct + helper methods
+│   └── config.go                # InstallConfig, User, HardwareProfile, GPUInfo structs
+├── data/                        # All static data as Go files (no external config files)
+│   ├── packages.go              # PackageList builder + all package lists
+│   ├── services.go              # Enable/Disable service lists
+│   ├── extras.go                # ExtraCategories — TUI package picker catalog
+│   └── flow.go                  # Pipeline — ordered install step definitions
 ├── style/
 │   └── styles.go                # Catppuccin Mocha palette, lipgloss styles, helpers
 ├── tui/
@@ -32,29 +37,30 @@ falconia/
 │   ├── sidebar.go               # Live config summary panel (right side)
 │   └── steps/
 │       ├── messages.go          # Navigation message types (Done, Back, StartInstall)
-│       ├── welcome.go           # Step 00 — logo + firmware detection
+│       ├── welcome.go           # Step 00 — logo + hardware profile display
 │       ├── disk.go              # Step 01 — disk, scheme, filesystem, encryption, swap
-│       ├── partitions.go        # Step 01b — manual partition mapping (root/efi/swap)
+│       ├── partitions.go        # Step 01b — manual partition mapping
 │       ├── network.go           # Step 02 — ethernet / WiFi / skip
 │       ├── locale.go            # Step 03 — timezone, locale, keymap
 │       ├── users.go             # Steps 04-05 — hostname, root password, user creation
-│       ├── selections.go        # Generic radio list; used for kernel, desktop, bootloader
+│       ├── selections.go        # Generic radio list; kernel, desktop, bootloader steps
 │       ├── packages.go          # Step 08 — categorised extra package selector
-│       ├── postinstall.go       # Step 10 — service toggles
-│       ├── confirm.go           # Step 11 — full summary + install button
-│       └── progress.go          # Phase 2 — install pipeline runner + log viewport
+│       ├── confirm.go           # Step 09 — full summary + install button
+│       └── progress.go          # Phase 2 — step registry, pipeline runner, log viewport
 └── installer/
-    ├── runner.go                # Run, RunDry, RunChroot, RunChrootDry, RunSh, runWithStdin
+    ├── runner.go                # Run, RunDry, RunChroot, RunChrootDry, runWithStdin
     ├── detect.go                # DetectFirmware, ListDisks, liveIsoDisk, CheckInternet
+    ├── hardware.go              # DetectHardware — CPU, GPU, WiFi, VM, RAM, NVMe
     ├── disk.go                  # PartitionDisk, FormatDisks, MountDisks, Cleanup
-    ├── base.go                  # Pacstrap (dracut, LUKS keyfile, Plymouth), GenFstab, GenCrypttab
+    ├── base.go                  # Pacstrap, GenFstab, GenCrypttab
     ├── system.go                # SetTimezone, SetLocale, ConfigureNetwork, SetHostname, CreateUsers
     ├── bootloader.go            # InstallBootloader → installGrub / installSystemdBoot
+    ├── drivers.go               # InstallDrivers → GPU, WiFi, VM guest tools
     ├── postinstall.go           # InstallDesktop, InstallPackages, EnableServices
-    ├── livefiles.go             # CopyLiveFiles — copies select files from live ISO to /mnt
-    ├── helpers.go               # writeChroot, appendFile, runOutput, runWithStdin
-    ├── timezone.go              # ListTimezones
-    └── locales.go               # ListLocales
+    ├── livefiles.go             # CopyLiveFiles
+    ├── helpers.go               # writeChroot, appendFile, runOutput
+    ├── locales.go               # ListLocales
+    └── timezone.go              # ListTimezones
 ```
 
 ---
@@ -65,7 +71,8 @@ Single struct passed to every installer function. Set during Phase 1, consumed d
 
 | Field | Type | Description |
 |---|---|---|
-| `Firmware` | string | `"uefi"` or `"bios"` — auto-detected on startup |
+| `Hardware` | `HardwareProfile` | Auto-detected at startup — never user-set |
+| `Firmware` | string | `"uefi"` or `"bios"` — auto-detected |
 | `Disk` | string | Target block device e.g. `/dev/sda` |
 | `DiskModel` | string | Human label shown on confirm screen |
 | `PartitionScheme` | string | `"guided"` or `"manual"` |
@@ -81,100 +88,169 @@ Single struct passed to every installer function. Set during Phase 1, consumed d
 | `Keymap` | string | e.g. `"us"` |
 | `Hostname` | string | System hostname |
 | `RootPassword` | string | Root password — never logged |
-| `Users` | []User | Non-root users (username, password, shell, groups) |
+| `Users` | `[]User` | Non-root users (username, password, shell, groups) |
 | `Kernel` | string | `"linux"`, `"linux-lts"`, `"linux-zen"`, `"linux-hardened"` |
-| `DesktopEnv` | string | `"none"`, `"gnome"`, `"kde"`, `"xfce"`, `"hyprland"`, `"i3"` |
-| `DisplayManager` | string | Auto-set from DE choice |
-| `ExtraPackages` | []string | User-selected packages from the packages step |
+| `DesktopEnv` | string | `"none"`, `"kde"`, `"gnome"`, `"xfce"`, `"cinnamon"`, `"hyprland"`, `"i3"` |
+| `DisplayManager` | string | Auto-set from DE choice via `DEDisplayManager()` |
+| `ExtraPackages` | `[]string` | User-selected packages from the packages step |
 | `Bootloader` | string | `"grub"` or `"systemd-boot"` |
 | `GrubTimeout` | int | Bootloader menu timeout in seconds |
-| `EnableBluetooth` | bool | Install and enable bluez |
-| `EnableCups` | bool | Install and enable CUPS |
-| `EnableSSH` | bool | Install and enable sshd |
 | `RankMirrors` | bool | Run reflector before pacstrap |
-| `ExtraServices` | map[string]bool | Dynamic service flags (docker, tailscale, flatpak, zram, etc.) |
-| `MountPoints` | map[string]string | Manual partitioning: mount point → device path |
+| `MountPoints` | `map[string]string` | Manual partitioning: mount point → device |
 | `DryRun` | bool | Skip actual command execution |
 
-`config.Defaults()` returns sensible starting values (guided, ext4, 4096 MiB swap, GRUB, 5s timeout, US locale).
+### HardwareProfile
+
+Populated once at startup by `installer.DetectHardware()`. Never changes after that.
+
+| Field | Type | Values |
+|---|---|---|
+| `CPU` | string | `"intel"` \| `"amd"` \| `"other"` |
+| `GPUs` | `[]GPUInfo` | One entry per detected display adapter |
+| `WiFi` | string | `"broadcom"` \| `"other"` |
+| `VM` | string | `"virtualbox"` \| `"vmware"` \| `"kvm"` \| `"qemu"` \| `"none"` |
+| `RAMBytes` | int64 | Total physical RAM in bytes |
+| `HasNVMe` | bool | Any `/dev/nvme*` device present |
+
+`GPUInfo.UseOpen` is `true` for NVIDIA Turing+ (device ID ≥ `0x1e00`) — installs `nvidia-open` instead of `nvidia`.
+
+---
+
+## data/ Package
+
+The `data/` package is the equivalent of Calamares `.conf` files — pure data, no logic.
+
+### `data/flow.go` — Pipeline (settings.conf equivalent)
+
+Defines the ordered install sequence. Each `StepDef` has a typed `StepKey`, a display label, and an optional condition function.
+
+```go
+var Pipeline = []StepDef{
+    {StepVerifyInternet, "Verify internet", nil},                              // always
+    {StepRankMirrors, "Rank mirrors", func(c *InstallConfig) bool {            // conditional
+        return c.RankMirrors
+    }},
+    // ...
+}
+```
+
+To add a new step:
+1. Declare a `StepKey` constant in `data/flow.go`
+2. Add a `StepDef` to `Pipeline` at the right position
+3. Register the implementation function in `stepRegistry` in `tui/steps/progress.go`
+
+### `data/services.go` — Services (services-systemd.conf equivalent)
+
+Two flat lists. `EnableServices` iterates them unconditionally — failures are logged as warnings and execution continues.
+
+```go
+var Enable = []string{
+    "NetworkManager", "systemd-timesyncd", "fstrim.timer",
+    "sddm", "gdm", "lightdm",           // only the installed DM succeeds
+    "docker", "sshd", "cups",            // succeed if package was selected
+    "nvidia-persistenced",               // succeeds on NVIDIA installs
+    "vboxservice", "vmtoolsd", ...       // succeed on matching VM
+}
+var Disable = []string{"bluetooth", "pacman-init"}
+```
+
+### `data/extras.go` — Extra package catalog (netinstall.yaml equivalent)
+
+Defines the categories and entries shown in the packages TUI step. The TUI reads `data.ExtraCategories` and converts them to its internal `pkgCategory` / `pkgEntry` types (which also carry runtime state like `checked` and `collapsed`).
+
+```go
+var ExtraCategories = []ExtraCategory{
+    {Name: "Internet", Entries: []ExtraEntry{
+        {Name: "Browsers", IsHeader: true, Level: 0},
+        {Name: "firefox", Desc: "Mozilla Firefox", Level: 1},
+        // ...
+    }},
+    // ...
+}
+```
+
+To add a package to the picker: one line in `data/extras.go`.
+
+### `data/packages.go` — Package lists (pacstrap.conf / packagechooser.conf equivalent)
+
+All package lists as exported variables. The `PackageList` builder assembles them conditionally:
+
+```go
+pkgs := data.New().
+    Add(data.Base...).
+    Add(cfg.Kernel, cfg.Kernel+"-headers").
+    AddMap(data.ByFilesystem, cfg.Filesystem).   // looks up "ext4", "btrfs", or "xfs"
+    AddIf(cfg.EncryptDisk, data.Encryption...).
+    AddMap(data.ByMicrocode, cfg.Hardware.CPU).  // looks up "intel" or "amd"
+    Build()                                       // deduplicates, preserves order
+```
+
+Key variables:
+
+| Variable | Used for |
+|---|---|
+| `Base` | Every install via pacstrap |
+| `CommonDE` | Any DE/WM selection (xorg, kitty, mesa, pipewire, etc.) |
+| `ByDE` | Per-DE packages sourced from Calamares `packagechooser.conf` |
+| `ByFilesystem` | e2fsprogs / btrfs-progs / xfsprogs |
+| `ByMicrocode` | intel-ucode / amd-ucode |
+| `ByDriver` | nvidia, nvidia-open, broadcom, broadcom-lts |
+| `ByVM` | virtualbox-guest-utils, open-vm-tools, qemu-guest-agent |
+| `Encryption` | cryptsetup |
 
 ---
 
 ## Phase 1 — TUI Configuration Steps
 
-Managed by `tui/app.go`. Steps are visited in order; the user can go back with `esc`. The sidebar (`tui/sidebar.go`) shows a live summary of the current config at all times.
-
 | # | File | What the user configures |
 |---|---|---|
-| 00 | `welcome.go` | Intro screen, detected firmware shown |
-| 01 | `disk.go` | Target disk, guided/manual scheme, filesystem, encryption + passphrase, swap size (advanced) |
+| 00 | `welcome.go` | Logo + **hardware profile** — CPU + ucode, GPU + driver, WiFi, RAM, NVMe, VM |
+| 01 | `disk.go` | Target disk, guided/manual, filesystem, encryption + passphrase, swap size |
 | 01b | `partitions.go` | Manual only — maps `/`, `/boot/efi`, `swap` to specific partitions |
 | 02 | `network.go` | Ethernet / WiFi (SSID + password) / skip |
 | 03 | `locale.go` | Timezone (searchable list), locale, keymap |
 | 04 | `users.go` | Hostname |
-| 05 | `users.go` | Root password, non-root user (name, password, shell, wheel group) |
+| 05 | `users.go` | Root password, non-root user (name, password, shell, groups) |
 | 06 | `selections.go` | Kernel variant |
 | 07 | `selections.go` | Desktop environment |
 | 08 | `packages.go` | Extra packages by category with collapsible headers |
 | 09 | `selections.go` | Bootloader |
-| 10 | `postinstall.go` | Service toggles — mirrors, SSH, Bluetooth, CUPS, Docker, Tailscale, Avahi, TLP, UFW, Flatpak, Snap, Zram, Trim, Microcode |
-| 11 | `confirm.go` | Read-only summary; **Install** button triggers Phase 2 |
+| 10 | `confirm.go` | Read-only summary; **Install** button triggers Phase 2 |
 
-**Advanced mode** (`ctrl+a`) unlocks extra fields: swap size on the disk step, package descriptions on the packages step.
+There is no services toggle step. Services are data-driven and fully automatic.
 
-**Key nav:** `↑↓` / `tab` move between fields; `←→` change values; `enter` advances; `esc` goes back.
+**Key nav:** `↑↓` / `tab` move between fields; `←→` change values; `enter` advances; `esc` goes back; `ctrl+a` toggles advanced mode.
 
 ---
 
 ## Phase 2 — Install Pipeline
 
-Defined in `tui/steps/progress.go` → `buildSteps()`. Steps run sequentially in a goroutine; each streams its output to a scrollable log viewport.
+Driven by `data.Pipeline`. `buildSteps()` in `progress.go` iterates `data.Pipeline`, filters by condition, and looks up each step's implementation in `stepRegistry`. Adding a step requires touching three places: `data/flow.go` (key + definition), `progress.go` (registry entry), and `installer/` (implementation function).
 
-```
-buildSteps(cfg) returns []installStep{label, func}
-```
-
-Current step order:
-
-| # | Label | Function | Conditional |
-|---|---|---|---|
-| 1 | Verify internet | `CheckInternet` | always |
-| 2 | Sync system clock | `SyncClock` | always |
-| 3 | Rank mirrors | `RankMirrors` | `cfg.RankMirrors` |
-| 4 | Partition disk | `PartitionDisk` | always |
-| 5 | Format filesystems | `FormatDisks` | always |
-| 6 | Mount filesystems | `MountDisks` | always |
-| 7 | Copy live environment files | `CopyLiveFiles` | always |
-| 8 | Install base system | `Pacstrap` | always |
-| 9 | Generate fstab | `GenFstab` | always |
-| 10 | Set timezone | `SetTimezone` | always |
-| 11 | Write crypttab | `GenCrypttab` | `cfg.EncryptDisk` |
-| 12 | Set locale | `SetLocale` | always |
-| 13 | Configure network | `ConfigureNetwork` | always |
-| 14 | Set hostname | `SetHostname` | always |
-| 15 | Set root password | `SetRootPassword` | always |
-| 16 | Create users | `CreateUsers` | always |
-| 17 | Install bootloader | `InstallBootloader` | always |
-| 18 | Install desktop environment | `InstallDesktop` | `cfg.DesktopEnv != "none"` |
-| 19 | Install extra packages | `InstallPackages` | always |
-| 20 | Enable services | `EnableServices` | always |
-| 21 | Unmount & cleanup | `Cleanup` | always |
-
-### Adding a new step
-
-```go
-// Always runs
-steps = append(steps, installStep{"My step", func(c *config.InstallConfig, log installer.LineHandler) error {
-    return installer.MyFunction(c, log)
-}})
-
-// Conditional
-if cfg.SomeFlag {
-    steps = append(steps, installStep{"My step", func(c *config.InstallConfig, log installer.LineHandler) error {
-        return installer.MyFunction(c, log)
-    }})
-}
-```
+| # | Label | Condition |
+|---|---|---|
+| 1 | Verify internet | always |
+| 2 | Sync system clock | always |
+| 3 | Rank mirrors | `cfg.RankMirrors` |
+| 4 | Partition disk | always |
+| 5 | Format filesystems | always |
+| 6 | Mount filesystems | always |
+| 7 | Copy live environment files | always |
+| 8 | Install base system (pacstrap) | always |
+| 9 | Generate fstab | always |
+| 10 | Set timezone | always |
+| 11 | Write crypttab | `cfg.EncryptDisk` |
+| 12 | Set locale | always |
+| 13 | Configure network | always |
+| 14 | Set hostname | always |
+| 15 | Set root password | always |
+| 16 | Create users | always |
+| 17 | Install bootloader | always |
+| 18 | Install desktop environment | `cfg.DesktopEnv != "none"` |
+| 19 | Install extra packages | always |
+| 20 | Install hardware drivers | NVIDIA or Broadcom or VM detected |
+| 21 | Enable services | always |
+| 22 | Unmount & cleanup | always |
 
 ---
 
@@ -182,65 +258,75 @@ if cfg.SomeFlag {
 
 ### runner.go — Command execution
 
-All installer functions receive a `LineHandler func(string)` for streaming output.
-
 ```go
-Run(log, "pacman", "-S", "vim")              // run on host
-RunDry(cfg, log, "pacman", "-S", "vim")      // skips if cfg.DryRun
-RunChroot(log, "pacman", "-S", "vim")        // run inside arch-chroot /mnt
-RunChrootDry(cfg, log, "pacman", "-S", "vim")
-RunSh(log, "echo hello")                     // /bin/sh -c
-runWithStdin(log, reader, "cryptsetup", ...) // piped stdin (passwords)
-runOutput("blkid", "-s", "UUID", ...)        // capture stdout as string
+Run(log, "pacman", "-S", "vim")               // run on host
+RunDry(cfg, log, "pacman", "-S", "vim")       // skips if cfg.DryRun
+RunChroot(log, "pacman", "-S", "vim")         // arch-chroot /mnt
+RunChrootDry(cfg, log, "pacman", "-S", "vim") // arch-chroot, DryRun-aware
+runWithStdin(log, reader, "cryptsetup", ...)  // piped stdin (passwords)
+runOutput("blkid", "-s", "UUID", ...)         // capture stdout
 ```
 
-`RunDry` logs `[DRY RUN] Would execute: <cmd>` and returns nil without running anything.
+### hardware.go — Detection
+
+`DetectHardware()` runs once in `main.go` before the TUI starts. It probes:
+- **CPU** — `/proc/cpuinfo` for `GenuineIntel` / `AuthenticAMD`
+- **GPUs** — `lspci -nn` for class `0300/0302/0380`; PCI vendor `10de`=NVIDIA, `1002`=AMD, `8086`=Intel; device ID ≥ `0x1e00` → `UseOpen=true`
+- **WiFi** — `lspci -nn` for vendor `14e4` (Broadcom)
+- **VM** — `systemd-detect-virt`; maps `oracle`→`virtualbox`
+- **RAM** — `/proc/meminfo` MemTotal in bytes
+- **NVMe** — any `/dev/nvme*` in `/dev`
 
 ### disk.go — Partitioning
 
-**Partition layout (guided):**
+**Guided layout:**
 
-UEFI: `sda1` EFI 512 MiB (FAT32) · `sda2` swap (optional) · `sda3` root  
-BIOS: `sda1` BIOS-boot 1 MiB · `sda2` swap (optional) · `sda3` root
+UEFI: `sda1` EFI 512 MiB (FAT32) · `sda2` swap (if SwapSize > 0) · `sda3` root
+BIOS: `sda1` BIOS-boot 1 MiB · `sda2` swap (if SwapSize > 0) · `sda3` root
 
-NVMe/mmcblk devices get a `p` suffix: `nvme0n1p1`, `nvme0n1p2`, etc.
+After `parted`, `partprobe <disk> && udevadm settle` forces the kernel to see the new layout before `mkfs` runs (prevents mount-of-old-LUKS-partition bug).
 
-After `parted` creates partitions, `partprobe <disk> && udevadm settle` is called to ensure the kernel sees the new layout before `mkfs` runs.
-
-**Encryption (LUKS):** Root partition is formatted with `cryptsetup luksFormat --type luks1`, opened as `/dev/mapper/cryptroot`, then `mkfs` runs on the mapper device.
+**LUKS:** `cryptsetup luksFormat --type luks1` → `cryptsetup open` → `mkfs` on `/dev/mapper/cryptroot`.
 
 ### base.go — Pacstrap + initramfs
 
-`Pacstrap` does several things beyond just running pacstrap:
-
-1. Runs `pacstrap /mnt <packages>`
-2. Writes `/mnt/etc/dracut.conf.d/plymouth.conf` (Plymouth in initramfs)
-3. If encrypted + GRUB: writes `/mnt/etc/dracut.conf.d/encryption.conf`, generates 512-byte random keyfile at `/mnt/crypto_keyfile.bin` (mode `0000`), registers it as a second LUKS key slot via `luksAddKey`
-4. Runs `plymouth-set-default-theme berserk` in chroot
-5. Builds initramfs with dracut (`--force`)
-6. Builds fallback initramfs (`--no-hostonly --force`)
-
-**LUKS keyfile rationale:** GRUB must unlock LUKS itself to read the kernel and initramfs (one passphrase prompt). Without a keyfile, the initramfs would prompt a second time. The keyfile is embedded in the initramfs by dracut and referenced by `crypttab`/`rd.luks.key`, so the initramfs unlocks LUKS silently. For systemd-boot, the ESP is unencrypted so the keyfile would be exposed — it is not generated and the initramfs prompts once instead.
+Beyond running pacstrap, `Pacstrap()` also:
+1. Writes `/mnt/etc/dracut.conf.d/plymouth.conf` — embeds Plymouth in initramfs
+2. If encrypted + GRUB: writes `encryption.conf`, generates 512-byte keyfile at `/mnt/crypto_keyfile.bin` (mode `0000`), registers it via `luksAddKey` (no second passphrase prompt at boot)
+3. If encrypted + systemd-boot: no keyfile (ESP is unencrypted; initramfs prompts once)
+4. `plymouth-set-default-theme berserk` in chroot before dracut
+5. `dracut --force` (primary) + `dracut --no-hostonly --force` (fallback)
 
 ### bootloader.go — GRUB & systemd-boot
 
-**GRUB kernel cmdline (encrypted):**
-```
-quiet splash rd.luks.uuid=<uuid> rd.luks.name=<uuid>=cryptroot rd.luks.key=/crypto_keyfile.bin root=/dev/mapper/cryptroot
-```
+Kernel cmdline is assembled from hardware detection — not hardcoded:
+- `quiet splash` — always
+- `nvme_load=YES` — when `cfg.Hardware.HasNVMe`
+- `nvidia-drm.modeset=1` — when any `cfg.Hardware.GPUs` has `Vendor == "nvidia"`
+- `rd.luks.uuid=...` + `rd.luks.key=...` — when encrypted + GRUB
+- `rd.luks.uuid=...` (no key) — when encrypted + systemd-boot
 
-**GRUB kernel cmdline (plain):**
-```
-quiet splash
-```
+GRUB also runs `grub-install --removable` as an NVRAM-fallback for firmware that ignores boot entries.
 
-**systemd-boot** copies kernel + initramfs (+ microcode if enabled) to the ESP, writes `/boot/efi/loader/entries/arch.conf` and `/mnt/etc/kernel/cmdline` (so future kernel upgrades via `kernel-install` preserve the correct parameters).
+systemd-boot writes `/mnt/etc/kernel/cmdline` so future `kernel-install` invocations (triggered by kernel package upgrades) preserve the correct parameters.
 
-UEFI installs also run `grub-install --removable` as a fallback for firmware that ignores NVRAM boot entries.
+### drivers.go — Hardware driver installation
 
-### livefiles.go — Copying from the live ISO
+`InstallDrivers()` is the Phase 2 step for hardware-specific packages:
 
-Files listed in `liveFiles` are copied from the running live environment into `/mnt` before pacstrap, preserving directory structure and file permissions.
+- **NVIDIA** — installs `data.ByDriver["nvidia"]` or `["nvidia-open"]` based on `gpu.UseOpen`; adds `nvidia-prime` for hybrid Intel+NVIDIA; rebuilds dracut initramfs; regenerates grub.cfg
+- **Broadcom WiFi** — installs `broadcom-wl` (normal kernels) or `broadcom-wl-dkms` (`linux-lts`)
+- **VM guest tools** — installs from `data.ByVM[cfg.Hardware.VM]`; removes `power-profiles-daemon` (irrelevant in VMs)
+
+### postinstall.go — Desktop, packages, services
+
+**`InstallDesktop`** — installs `data.CommonDE` (shared xorg/audio/kitty foundation) + `data.ByDE[cfg.DesktopEnv]` (DE-specific), deduplicated.
+
+**`InstallPackages`** — installs only `cfg.ExtraPackages` (what the user picked in the packages step). No flag-based additions.
+
+**`EnableServices`** — iterates `data.Enable`, then `data.Disable`, then sets `graphical.target`. No conditionals anywhere.
+
+### livefiles.go — Live ISO file copy
 
 ```go
 var liveFiles = []string{
@@ -249,13 +335,13 @@ var liveFiles = []string{
 }
 ```
 
-`CopyLiveFiles` runs at step 7, before pacstrap, so the custom `pacman.conf` (with BerserkArch repos) is in place when packages are installed.
+Runs before pacstrap so the BerserkArch repo config is in place when packages are installed. Add entries here as needed.
 
-### detect.go — Hardware detection
+### detect.go — Disk detection
 
 `ListDisks()` excludes:
-- Loop devices and optical drives (`lsblk -e 7,11`)
-- The live ISO boot medium (identified by `/run/archiso/bootmnt` in `/proc/mounts`, resolved to the parent disk via `lsblk PKNAME`)
+- Loop devices + optical drives (`lsblk -e 7,11`)
+- The live ISO boot medium (identified by `/run/archiso/bootmnt` in `/proc/mounts`, parent disk via `lsblk PKNAME`)
 
 ---
 
@@ -264,27 +350,26 @@ var liveFiles = []string{
 `style/styles.go` uses the **Catppuccin Mocha** palette.
 
 ```go
-// Pre-defined styles
-style.StyleStepHeader   // bold section headers in steps
-style.StyleKey          // field labels
-style.StyleValue        // field values
-style.StyleSelected     // highlighted / active element
-style.StyleMuted        // secondary / dimmed text
-style.StyleError        // red error messages
-style.StyleDanger       // red warning (e.g. disk wipe warning)
-style.StyleGood         // green success/dry-run prefix
+style.StyleStepHeader     // bold section headers
+style.StyleKey            // field labels
+style.StyleValue          // field values
+style.StyleSelected       // highlighted / active element
+style.StyleMuted          // secondary / dimmed text
+style.StyleGood           // green (dry-run prefix, success)
+style.StyleWarn           // yellow warning
+style.StyleError          // red error
+style.StyleDanger         // red danger (disk wipe warning)
 style.StyleButtonActive / StyleButtonInactive / StyleButtonDanger
 
-// Helpers
-style.Checkbox(checked bool) string          // [x] or [ ]
-style.HelpRow("key", "action", ...)  string  // bottom help bar
-style.ProgressBar(pct float64, width int) string
+style.Checkbox(checked bool) string
+style.HelpRow("key", "action", ...) string
+style.ProgressBar(width int, pct float64) string
 ```
 
 ---
 
 ## Dry-Run Mode
 
-Run with `./falconia --dry-run` (no root required). Every `RunDry` / `RunChrootDry` call logs `[DRY RUN] Would execute: <cmd>` with a 100 ms simulated delay instead of running the command. Explicit `cfg.DryRun` guards in installer functions handle anything that doesn't go through those wrappers (file writes, blkid calls, etc.).
+`./falconia --dry-run` — no root required. Every `RunDry` / `RunChrootDry` call logs `[DRY RUN] Would execute: <cmd>` with a 100 ms simulated delay. Explicit `cfg.DryRun` guards cover file writes, blkid calls, and anything that doesn't go through those wrappers.
 
-This makes the full TUI walkable and the entire Phase 2 pipeline testable without a real disk.
+The full TUI Phase 1 and Phase 2 pipeline are testable without a real disk.
