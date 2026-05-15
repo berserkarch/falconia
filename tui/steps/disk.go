@@ -388,9 +388,9 @@ func (m DiskModel) View() string {
 	b.WriteString("  ")
 	for i, s := range schemes {
 		if i == m.schemeIdx {
-			b.WriteString(style.StyleSelected.Render("[" + s + "]"))
+			b.WriteString(style.ToggleOn(s))
 		} else {
-			b.WriteString(style.StyleMuted.Render(" " + s + " "))
+			b.WriteString(style.ToggleOff(s))
 		}
 		b.WriteString("  ")
 	}
@@ -402,9 +402,9 @@ func (m DiskModel) View() string {
 	b.WriteString(" ")
 	for i, f := range fsOptions {
 		if i == m.fsIdx {
-			b.WriteString(style.StyleSelected.Render("[" + f + "]"))
+			b.WriteString(style.ToggleOn(f))
 		} else {
-			b.WriteString(style.StyleMuted.Render(" " + f + " "))
+			b.WriteString(style.ToggleOff(f))
 		}
 		b.WriteString("  ")
 	}
@@ -415,11 +415,11 @@ func (m DiskModel) View() string {
 	b.WriteString(style.StyleKey.Render("Encrypt"))
 	b.WriteString(" ")
 	if m.encrypt {
-		b.WriteString(style.StyleSelected.Render("[yes]"))
-		b.WriteString(style.StyleMuted.Render("  no "))
+		b.WriteString(style.ToggleOn("yes"))
+		b.WriteString(style.ToggleOff("no"))
 	} else {
-		b.WriteString(style.StyleMuted.Render(" yes  "))
-		b.WriteString(style.StyleSelected.Render("[no]"))
+		b.WriteString(style.ToggleOff("yes"))
+		b.WriteString(style.ToggleOn("no"))
 	}
 	b.WriteString("\n")
 

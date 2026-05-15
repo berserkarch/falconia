@@ -450,9 +450,9 @@ func (m UsersModel) View() string {
 	b.WriteString(cursor(userFieldShell) + style.StyleKey.Render("Shell     "))
 	for i, s := range shellOptions {
 		if i == m.shellIdx {
-			b.WriteString(style.StyleSelected.Render("[" + s + "]"))
+			b.WriteString(style.ToggleOn(s))
 		} else {
-			b.WriteString(style.StyleMuted.Render(" " + s + " "))
+			b.WriteString(style.ToggleOff(s))
 		}
 		b.WriteString("  ")
 	}

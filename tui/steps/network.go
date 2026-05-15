@@ -187,9 +187,9 @@ func (m NetworkModel) View() string {
 	b.WriteString(style.StyleKey.Render("Mode  "))
 	for i, mode := range netModes {
 		if i == m.modeIdx {
-			b.WriteString(style.StyleSelected.Render("[" + mode + "]"))
+			b.WriteString(style.ToggleOn(mode))
 		} else {
-			b.WriteString(style.StyleMuted.Render(" " + mode + " "))
+			b.WriteString(style.ToggleOff(mode))
 		}
 		b.WriteString("  ")
 	}

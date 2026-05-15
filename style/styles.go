@@ -176,6 +176,17 @@ func StyleBlue() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(colBlue).Bold(true)
 }
 
+// ToggleOn renders the active choice in an inline toggle.
+// Uses reverse video so it is legible on both true-color and 16-color (TTY) terminals.
+func ToggleOn(s string) string {
+	return lipgloss.NewStyle().Reverse(true).Bold(true).Render("[" + s + "]")
+}
+
+// ToggleOff renders an inactive choice in an inline toggle.
+func ToggleOff(s string) string {
+	return StyleMuted.Render(" " + s + " ")
+}
+
 // ProgressBar renders a simple ascii progress bar of given width (0.0–1.0).
 func ProgressBar(width int, pct float64) string {
 	filled := int(float64(width) * pct)
