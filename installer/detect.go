@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -96,9 +97,19 @@ func liveIsoDisk() string {
 }
 
 // CheckInternet returns nil if an internet connection is detected.
-// We ping a reliable IP (1.1.1.1) to avoid DNS resolution delays.
+// Retries up to 3 times with a 3-second timeout each to tolerate transient blips.
 func CheckInternet(log LineHandler) error {
-	return Run(log, "ping", "-c", "1", "-W", "1", "1.1.1.1")
+	const attempts = 3
+	for i := 1; i <= attempts; i++ {
+		if i > 1 {
+			log(fmt.Sprintf("No response, retrying (%d/%d)...", i, attempts))
+			time.Sleep(2 * time.Second)
+		}
+		if err := Run(log, "ping", "-c", "1", "-W", "3", "1.1.1.1"); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("no internet connection after %d attempts — check your network", attempts)
 }
 
 // SyncClock syncs the system clock via timedatectl.

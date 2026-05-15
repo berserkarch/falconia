@@ -20,6 +20,7 @@ import (
 
 type installStep struct {
 	label string
+	soft  bool // if true, failure logs a warning and continues rather than aborting
 	run   func(*config.InstallConfig, installer.LineHandler) error
 }
 
@@ -105,7 +106,7 @@ func buildSteps(cfg *config.InstallConfig) []installStep {
 		if !ok {
 			panic("no implementation registered for step: " + string(def.Key))
 		}
-		steps = append(steps, installStep{def.Label, fn})
+		steps = append(steps, installStep{label: def.Label, soft: def.Soft, run: fn})
 	}
 	return steps
 }
@@ -198,8 +199,12 @@ func (m ProgressModel) Init() tea.Cmd {
 				}
 			}
 			if err := step.run(m.cfg, logHandler); err != nil {
-				m.ch <- InstallErrorMsg{Step: step.label, Err: err}
-				return
+				if step.soft {
+					logHandler("\033[33m⚠  " + step.label + " failed (non-fatal): " + err.Error() + " — continuing\033[0m")
+				} else {
+					m.ch <- InstallErrorMsg{Step: step.label, Err: err}
+					return
+				}
 			}
 			m.ch <- StepCompleteMsg(i)
 		}

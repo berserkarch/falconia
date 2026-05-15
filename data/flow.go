@@ -35,42 +35,44 @@ const (
 
 // StepDef is one entry in the install pipeline.
 // When is nil means the step always runs.
+// Soft steps log a warning on failure and continue instead of aborting.
 type StepDef struct {
 	Key   StepKey
 	Label string
 	When  func(*config.InstallConfig) bool
+	Soft  bool
 }
 
 // Pipeline is the ordered install sequence — the equivalent of Calamares
 // settings.conf. Edit here to add, remove, or reorder steps.
 // Implementations are registered in tui/steps/progress.go.
 var Pipeline = []StepDef{
-	{StepVerifyInternet, "Verify internet", nil},
-	{StepSyncClock, "Sync system clock", nil},
-	{StepRankMirrors, "Rank mirrors", func(c *config.InstallConfig) bool {
+	{Key: StepVerifyInternet, Label: "Verify internet"},
+	{Key: StepSyncClock, Label: "Sync system clock", Soft: true},
+	{Key: StepRankMirrors, Label: "Rank mirrors", Soft: true, When: func(c *config.InstallConfig) bool {
 		return c.RankMirrors
 	}},
-	{StepPartitionDisk, "Partition disk", nil},
-	{StepFormatDisks, "Format filesystems", nil},
-	{StepMountDisks, "Mount filesystems", nil},
-	{StepCopyLiveFiles, "Copy live environment files", nil},
-	{StepPacstrap, "Install base system (pacstrap)", nil},
-	{StepGenFstab, "Generate fstab", nil},
-	{StepSetTimezone, "Set timezone", nil},
-	{StepWriteCrypttab, "Write crypttab", func(c *config.InstallConfig) bool {
+	{Key: StepPartitionDisk, Label: "Partition disk"},
+	{Key: StepFormatDisks, Label: "Format filesystems"},
+	{Key: StepMountDisks, Label: "Mount filesystems"},
+	{Key: StepCopyLiveFiles, Label: "Copy live environment files"},
+	{Key: StepPacstrap, Label: "Install base system (pacstrap)"},
+	{Key: StepGenFstab, Label: "Generate fstab"},
+	{Key: StepSetTimezone, Label: "Set timezone"},
+	{Key: StepWriteCrypttab, Label: "Write crypttab", When: func(c *config.InstallConfig) bool {
 		return c.EncryptDisk
 	}},
-	{StepSetLocale, "Set locale", nil},
-	{StepConfigNetwork, "Configure network", nil},
-	{StepSetHostname, "Set hostname", nil},
-	{StepRootPassword, "Set root password", nil},
-	{StepCreateUsers, "Create users", nil},
-	{StepBootloader, "Install bootloader", nil},
-	{StepInstallDesktop, "Install desktop environment", func(c *config.InstallConfig) bool {
+	{Key: StepSetLocale, Label: "Set locale"},
+	{Key: StepConfigNetwork, Label: "Configure network"},
+	{Key: StepSetHostname, Label: "Set hostname"},
+	{Key: StepRootPassword, Label: "Set root password"},
+	{Key: StepCreateUsers, Label: "Create users"},
+	{Key: StepBootloader, Label: "Install bootloader"},
+	{Key: StepInstallDesktop, Label: "Install desktop environment", When: func(c *config.InstallConfig) bool {
 		return c.DesktopEnv != "none" && c.DesktopEnv != ""
 	}},
-	{StepInstallPkgs, "Install extra packages", nil},
-	{StepInstallDrivers, "Install hardware drivers", func(c *config.InstallConfig) bool {
+	{Key: StepInstallPkgs, Label: "Install extra packages"},
+	{Key: StepInstallDrivers, Label: "Install hardware drivers", When: func(c *config.InstallConfig) bool {
 		for _, gpu := range c.Hardware.GPUs {
 			if gpu.Vendor == "nvidia" {
 				return true
@@ -79,6 +81,6 @@ var Pipeline = []StepDef{
 		return c.Hardware.WiFi == "broadcom" ||
 			(c.Hardware.VM != "none" && c.Hardware.VM != "")
 	}},
-	{StepEnableServices, "Enable services", nil},
-	{StepCleanup, "Unmount & cleanup", nil},
+	{Key: StepEnableServices, Label: "Enable services"},
+	{Key: StepCleanup, Label: "Unmount & cleanup"},
 }
