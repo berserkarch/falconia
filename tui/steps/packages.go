@@ -108,6 +108,30 @@ func defaultCategories() []pkgCategory {
 				{name: "lynis", desc: "Security auditing tool", level: 1},
 			},
 		},
+		{
+			name: "Desktop Base + Common Packages",
+			packages: []pkgEntry{
+				{name: "mesa-utils", desc: "mesa-utils", level: 1},
+				{name: "xf86-input-libinput", level: 1},
+				{name: "extra/xorg", level: 1},
+				{name: "extra/xorg-xdpyinfo", level: 1},
+				{name: "extra/xorg-server", level: 1},
+				{name: "extra/xorg-xinit", level: 1},
+				{name: "extra/xorg-xinput", level: 1},
+				{name: "extra/xorg-xkill", level: 1},
+				{name: "extra/xorg-xrandr", level: 1},
+				{name: "Default X11 System", isHeader: true},
+				{name: "gnupg", desc: "GNU Privacy Guard", level: 1},
+				{name: "age", desc: "Simple, modern file encryption tool", level: 1},
+				{name: "Password Managers", isHeader: true},
+				{name: "keepassxc", desc: "Community-driven password manager", level: 1},
+				{name: "pass", desc: "Standard Unix password manager", level: 1},
+				{name: "Audit & Analysis", isHeader: true},
+				{name: "nmap", desc: "Network mapper", level: 1},
+				{name: "wireshark-qt", desc: "Network protocol analyzer", level: 1},
+				{name: "lynis", desc: "Security auditing tool", level: 1},
+			},
+		},
 	}
 }
 
