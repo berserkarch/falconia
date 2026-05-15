@@ -146,12 +146,13 @@ var CommonDE = []string{
 	// Unified terminal across all DEs
 	"kitty",
 	// X11 base (used directly by X11 DEs; Wayland DEs use it via XWayland)
-	"xorg-server",
-	"xorg-xinit",
-	"xorg-xrandr",
-	"xorg-xdpyinfo",
-	"xorg-xinput",
-	"xorg-xkill",
+	"extra/xorg",
+	"extra/xorg-server",
+	"extra/xorg-xinit",
+	"extra/xorg-xrandr",
+	"extra/xorg-xdpyinfo",
+	"extra/xorg-xinput",
+	"extra/xorg-xkill",
 	"xf86-input-libinput",
 	// Open-source GPU rendering
 	"mesa",
@@ -250,9 +251,9 @@ var ByDE = map[string][]string{
 // "nvidia" = proprietary, "nvidia-open" = open kernel module (Turing+).
 // AMD and Intel drivers ship with the kernel — no extra package needed.
 var ByDriver = map[string][]string{
-	"nvidia":      {"nvidia", "nvidia-utils", "nvidia-settings"},
-	"nvidia-open": {"nvidia-open", "nvidia-utils", "nvidia-settings"},
-	"broadcom":    {"broadcom-wl"},
+	"nvidia":       {"nvidia", "nvidia-utils", "nvidia-settings"},
+	"nvidia-open":  {"nvidia-open", "nvidia-utils", "nvidia-settings"},
+	"broadcom":     {"broadcom-wl"},
 	"broadcom-lts": {"broadcom-wl-dkms"},
 }
 
@@ -263,4 +264,3 @@ var ByVM = map[string][]string{
 	"kvm":        {"qemu-guest-agent", "spice-vdagent"},
 	"qemu":       {"qemu-guest-agent", "spice-vdagent"},
 }
-

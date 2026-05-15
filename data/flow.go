@@ -1,3 +1,4 @@
+// Package data -- handles the flow
 package data
 
 import "falconia/config"
