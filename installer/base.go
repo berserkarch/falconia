@@ -67,7 +67,7 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 			os.MkdirAll(confDir, 0755)
 			encConf := `add_dracutmodules+=" crypt "` + "\n"
 			if err := os.WriteFile(confDir+"/encryption.conf", []byte(encConf), 0644); err != nil {
-				log("Warning: failed to write dracut encryption config: " + err.Error())
+				return fmt.Errorf("write dracut encryption config: %w", err)
 			}
 		}
 
@@ -87,6 +87,17 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		outputPath := fmt.Sprintf("/boot/initramfs-%s.img", cfg.Kernel)
 		if err := RunChroot(log, "dracut", "--force", outputPath, kver); err != nil {
 			return fmt.Errorf("dracut: %w", err)
+		}
+
+		// Generate a generic fallback initramfs. Pacstrap's mkinitcpio hook creates
+		// initramfs-<kernel>-fallback.img without the crypt module, so we overwrite it
+		// with a dracut generic image (--no-hostonly) that includes all drivers including
+		// dm-crypt. grub-mkconfig generates a fallback boot entry for this file; without
+		// this step that entry would fail to unlock root on encrypted installs.
+		log("Generating fallback initramfs with dracut...")
+		fallbackPath := fmt.Sprintf("/boot/initramfs-%s-fallback.img", cfg.Kernel)
+		if err := RunChroot(log, "dracut", "--no-hostonly", "--force", fallbackPath, kver); err != nil {
+			log(fmt.Sprintf("Warning: dracut fallback: %v", err))
 		}
 	} else {
 		log(styleGood("[DRY RUN] Would execute: ") + "dracut --force /boot/initramfs-" + cfg.Kernel + ".img <kver>")

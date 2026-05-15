@@ -84,11 +84,12 @@ func buildSteps(cfg *config.InstallConfig) []installStep {
 		}})
 	}
 
-	if len(cfg.ExtraPackages) > 0 {
-		steps = append(steps, installStep{"Install extra packages", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.InstallPackages(c, log)
-		}})
-	}
+	// Always include this step: InstallPackages handles ExtraPackages AND ExtraServices
+	// (docker, tailscale, etc.) AND boolean flags (Bluetooth, SSH, Cups). Skipping when
+	// ExtraPackages is empty would silently leave service-dependency packages uninstalled.
+	steps = append(steps, installStep{"Install extra packages", func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.InstallPackages(c, log)
+	}})
 
 	steps = append(
 		steps,

@@ -188,6 +188,9 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 
 // rootPartition returns the root partition path for UUID lookup.
 func rootPartition(cfg *config.InstallConfig) string {
+	if cfg.PartitionScheme == "manual" {
+		return cfg.MountPoints["/"]
+	}
 	p := partSuffix(cfg.Disk)
 	if cfg.SwapSize > 0 {
 		return cfg.Disk + p + "3"
