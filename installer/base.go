@@ -2,15 +2,17 @@ package installer
 
 import (
 	"crypto/rand"
-	"falconia/config"
 	"fmt"
 	"os"
 	"strings"
+
+	"falconia/config"
 )
 
 // RankMirrors runs reflector to rank pacman mirrors by speed.
 func RankMirrors(cfg *config.InstallConfig, log LineHandler) error {
-	return RunDry(cfg, log,
+	return RunDry(
+		cfg, log,
 		"reflector",
 		"--latest", "20",
 		"--sort", "rate",
@@ -30,6 +32,64 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		"dracut",
 		"sudo",
 		"vim",
+		"btrfs-progs",
+		"cryptsetup",
+		"device-mapper",
+		"diffutils",
+		"dosfstools",
+		"e2fsprogs",
+		"efibootmgr",
+		"exfatprogs",
+		"f2fs-tools",
+		"iptables-nft",
+		"inetutils",
+		"jfsutils",
+		"less",
+		"logrotate",
+		"lsb-release",
+		"lvm2",
+		"man-db",
+		"man-pages",
+		"mdadm",
+		"nano",
+		"netctl",
+		"ntfs-3g",
+		"perl",
+		"python",
+		"s-nail",
+		"sysfsutils",
+		"systemd-sysvcompat",
+		"texinfo",
+		"usbutils",
+		"which",
+		"xfsprogs",
+		"xterm",
+		"berserk-mirrorlist",
+		"blackarch-mirrorlist",
+		"chaotic-mirrorlist",
+		"archlinux-keyring",
+		"berserk-keyring",
+		"blackarch-keyring",
+		"chaotic-keyring",
+		"plymouth",
+		"python-pipx",
+		"berserk-hooks",
+		"berserk-rofi",
+		"berserk-default-themes",
+		"berserk-grub-theme",
+		"berserk-omz",
+		"berserk-gtk-theme",
+		"berserk-user-config",
+		"berserk-wallpapers",
+		"berserk-plymouth-theme",
+		"berserk-sunity-cursor",
+		"berserk-tpm-tmux",
+		"berserk-lazyvim",
+		"berserk-apparmor",
+		"berserk-firefox-defaults",
+		"berserk-neofetch",
+		"berserk-btweak",
+		"berserk",
 	}
 
 	// Add filesystem tools
@@ -67,12 +127,12 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		// would expose it; the initramfs prompts for the passphrase instead (one prompt).
 		if cfg.EncryptDisk {
 			confDir := "/mnt/etc/dracut.conf.d"
-			os.MkdirAll(confDir, 0755)
+			os.MkdirAll(confDir, 0o755)
 			encConf := "add_dracutmodules+=\" crypt \"\n"
 			if cfg.Bootloader != "systemd-boot" {
 				encConf += "install_items+=\" /crypto_keyfile.bin \"\n"
 			}
-			if err := os.WriteFile(confDir+"/encryption.conf", []byte(encConf), 0644); err != nil {
+			if err := os.WriteFile(confDir+"/encryption.conf", []byte(encConf), 0o644); err != nil {
 				return fmt.Errorf("write dracut encryption config: %w", err)
 			}
 
@@ -87,13 +147,14 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 					return fmt.Errorf("generate luks keyfile: %w", err)
 				}
 				// mode 0000: root can still read it (bypasses DAC); normal users cannot.
-				if err := os.WriteFile("/mnt/crypto_keyfile.bin", keyfile, 0000); err != nil {
+				if err := os.WriteFile("/mnt/crypto_keyfile.bin", keyfile, 0o000); err != nil {
 					return fmt.Errorf("write luks keyfile: %w", err)
 				}
 				// Authorize with the passphrase (no trailing newline, matching luksFormat)
 				// to add the keyfile bytes as a new LUKS key slot.
 				lukspart := rootPartition(cfg)
-				if err := runWithStdin(log, strings.NewReader(cfg.EncryptionPass),
+				if err := runWithStdin(
+					log, strings.NewReader(cfg.EncryptionPass),
 					"cryptsetup", "luksAddKey", "--key-file=-", lukspart, "/mnt/crypto_keyfile.bin",
 				); err != nil {
 					return fmt.Errorf("luksAddKey: %w", err)
