@@ -117,7 +117,7 @@ func DEPackages(de string) []string {
 	case "gnome":
 		return []string{"gnome", "gnome-extra", "gdm"}
 	case "kde":
-		return []string{"plasma", "plasma-desktop", "plasma-meta", "sddm", "berserk-user-config", "berserk-config-kde"}
+		return []string{"plasma", "plasma-desktop", "plasma-meta", "sddm", "berserk-user-config", "berserk-config-kde", "xf86-input-libinput", "extra/xorg", "extra/xorg-xdpyinfo", "extra/xorg-server", "extra/xorg-xinit", "extra/xorg-xinput", "extra/xorg-xkill", "extra/xorg-xrandr"}
 	case "xfce":
 		return []string{"xfce4", "xfce4-goodies", "lightdm", "lightdm-gtk-greeter"}
 	case "hyprland":
