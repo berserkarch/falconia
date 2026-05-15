@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"falconia/config"
+	"falconia/data"
 	"falconia/style"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -38,101 +39,24 @@ type PackagesModel struct {
 	pageSize     int
 }
 
+// defaultCategories converts data.ExtraCategories into the TUI's internal
+// representation. Static package data lives in data/extras.go; runtime state
+// (checked, collapsed) stays here in the model.
 func defaultCategories() []pkgCategory {
-	return []pkgCategory{
-		{
-			name: "Browsers & Internet",
-			packages: []pkgEntry{
-				{name: "Web Browsers", isHeader: true, level: 0},
-				{name: "firefox", desc: "Mozilla Firefox web browser", level: 1},
-				{name: "chromium", desc: "Chromium open-source browser", level: 1},
-				{name: "Lightweight Browsers", isHeader: true, level: 1},
-				{name: "falkon", desc: "KDE web browser", level: 2},
-				{name: "midori", desc: "Lightweight web browser", level: 2},
-				{name: "lynx", desc: "Text-based web browser", level: 2},
-				{name: "Communication", isHeader: true, level: 0},
-				{name: "discord", desc: "All-in-one voice and text chat", level: 1},
-				{name: "telegram-desktop", desc: "Telegram Desktop client", level: 1},
-				{name: "File Transfer", isHeader: true, level: 0},
-				{name: "transmission-qt", desc: "BitTorrent client (Qt)", level: 1},
-				{name: "qbittorrent", desc: "BitTorrent client (Qt6)", level: 1},
-			},
-		},
-		{
-			name: "Dev Tools",
-			packages: []pkgEntry{
-				{name: "Version Control", isHeader: true},
-				{name: "git", desc: "Version control system", level: 1},
-				{name: "github-cli", desc: "GitHub CLI tool", level: 1},
-				{name: "Languages", isHeader: true},
-				{name: "Python", isHeader: true, level: 1},
-				{name: "python", desc: "Python 3 interpreter", level: 2},
-				{name: "python-pip", desc: "Python package installer", level: 2},
-				{name: "Go", isHeader: true, level: 1},
-				{name: "go", desc: "Go programming language", level: 2},
-				{name: "Rust", isHeader: true, level: 1},
-				{name: "rustup", desc: "Rust toolchain manager", level: 2},
-				{name: "Editors", isHeader: true},
-				{name: "neovim", desc: "Extensible terminal editor", level: 1},
-				{name: "emacs", desc: "Extensible, self-documenting editor", level: 1},
-			},
-		},
-		{
-			name: "Services",
-			packages: []pkgEntry{
-				{name: "System Daemons", isHeader: true},
-				{name: "docker", desc: "Container orchestration daemon", level: 1},
-				{name: "bluez", desc: "Bluetooth stack daemon", level: 1},
-				{name: "cups", desc: "Common Unix Printing System", level: 1},
-				{name: "Networking Services", isHeader: true},
-				{name: "openssh", desc: "OpenSSH server daemon", level: 1},
-				{name: "tailscale", desc: "Zero config VPN", level: 1},
-				{name: "Databases", isHeader: true},
-				{name: "mariadb", desc: "MariaDB SQL database server", level: 1},
-				{name: "postgresql", desc: "PostgreSQL database server", level: 1},
-				{name: "redis", desc: "Advanced key-value store", level: 1},
-			},
-		},
-		{
-			name: "Security",
-			packages: []pkgEntry{
-				{name: "Encryption", isHeader: true},
-				{name: "gnupg", desc: "GNU Privacy Guard", level: 1},
-				{name: "age", desc: "Simple, modern file encryption tool", level: 1},
-				{name: "Password Managers", isHeader: true},
-				{name: "keepassxc", desc: "Community-driven password manager", level: 1},
-				{name: "pass", desc: "Standard Unix password manager", level: 1},
-				{name: "Audit & Analysis", isHeader: true},
-				{name: "nmap", desc: "Network mapper", level: 1},
-				{name: "wireshark-qt", desc: "Network protocol analyzer", level: 1},
-				{name: "lynis", desc: "Security auditing tool", level: 1},
-			},
-		},
-		{
-			name: "Desktop Base + Common Packages",
-			packages: []pkgEntry{
-				{name: "mesa-utils", desc: "mesa-utils", level: 1},
-				{name: "xf86-input-libinput", level: 1},
-				{name: "extra/xorg", level: 1},
-				{name: "extra/xorg-xdpyinfo", level: 1},
-				{name: "extra/xorg-server", level: 1},
-				{name: "extra/xorg-xinit", level: 1},
-				{name: "extra/xorg-xinput", level: 1},
-				{name: "extra/xorg-xkill", level: 1},
-				{name: "extra/xorg-xrandr", level: 1},
-				{name: "Default X11 System", isHeader: true},
-				{name: "gnupg", desc: "GNU Privacy Guard", level: 1},
-				{name: "age", desc: "Simple, modern file encryption tool", level: 1},
-				{name: "Password Managers", isHeader: true},
-				{name: "keepassxc", desc: "Community-driven password manager", level: 1},
-				{name: "pass", desc: "Standard Unix password manager", level: 1},
-				{name: "Audit & Analysis", isHeader: true},
-				{name: "nmap", desc: "Network mapper", level: 1},
-				{name: "wireshark-qt", desc: "Network protocol analyzer", level: 1},
-				{name: "lynis", desc: "Security auditing tool", level: 1},
-			},
-		},
+	cats := make([]pkgCategory, len(data.ExtraCategories))
+	for i, c := range data.ExtraCategories {
+		entries := make([]pkgEntry, len(c.Entries))
+		for j, e := range c.Entries {
+			entries[j] = pkgEntry{
+				name:     e.Name,
+				desc:     e.Desc,
+				isHeader: e.IsHeader,
+				level:    e.Level,
+			}
+		}
+		cats[i] = pkgCategory{name: c.Name, packages: entries}
 	}
+	return cats
 }
 
 func NewPackages(cfg *config.InstallConfig, advanced bool) PackagesModel {

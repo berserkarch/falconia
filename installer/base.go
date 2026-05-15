@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"falconia/config"
+	"falconia/data"
 )
 
 // RankMirrors runs reflector to rank pacman mirrors by speed.
@@ -22,91 +23,13 @@ func RankMirrors(cfg *config.InstallConfig, log LineHandler) error {
 
 // Pacstrap installs the base system into /mnt.
 func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
-	pkgs := []string{
-		"base",
-		"base-devel",
-		cfg.Kernel,
-		cfg.Kernel + "-headers",
-		"linux-firmware",
-		"networkmanager",
-		"dracut",
-		"sudo",
-		"vim",
-		"device-mapper",
-		"diffutils",
-		"dosfstools",
-		"efibootmgr",
-		"exfatprogs",
-		"f2fs-tools",
-		"iptables-nft",
-		"inetutils",
-		"jfsutils",
-		"less",
-		"logrotate",
-		"lsb-release",
-		"lvm2",
-		"man-db",
-		"man-pages",
-		"mdadm",
-		"nano",
-		"netctl",
-		"ntfs-3g",
-		"perl",
-		"python",
-		"s-nail",
-		"sysfsutils",
-		"systemd-sysvcompat",
-		"texinfo",
-		"usbutils",
-		"which",
-		"xterm",
-		"berserk-mirrorlist",
-		"blackarch-mirrorlist",
-		"chaotic-mirrorlist",
-		"archlinux-keyring",
-		"berserk-keyring",
-		"blackarch-keyring",
-		"chaotic-keyring",
-		"plymouth",
-		"python-pipx",
-		"berserk-hooks",
-		"berserk-rofi",
-		"berserk-default-themes",
-		"berserk-grub-theme",
-		"berserk-omz",
-		"berserk-gtk-theme",
-		"berserk-user-config",
-		"berserk-wallpapers",
-		"berserk-plymouth-theme",
-		"berserk-sunity-cursor",
-		"berserk-tpm-tmux",
-		"berserk-lazyvim",
-		"berserk-apparmor",
-		"berserk-firefox-defaults",
-		"berserk-neofetch",
-		"berserk-btweak",
-		"berserk",
-		"eza",
-	}
-
-	// Add filesystem tools
-	switch cfg.Filesystem {
-	case "btrfs":
-		pkgs = append(pkgs, "btrfs-progs")
-	case "xfs":
-		pkgs = append(pkgs, "xfsprogs")
-	default:
-		pkgs = append(pkgs, "e2fsprogs")
-	}
-
-	if cfg.EncryptDisk {
-		pkgs = append(pkgs, "cryptsetup")
-	}
-
-	// Add microcode
-	if cfg.ExtraServices["microcode"] {
-		pkgs = append(pkgs, detectMicrocode()...)
-	}
+	pkgs := data.New().
+		Add(data.Base...).
+		Add(cfg.Kernel, cfg.Kernel+"-headers").
+		AddMap(data.ByFilesystem, cfg.Filesystem).
+		AddIf(cfg.EncryptDisk, data.Encryption...).
+		AddIf(cfg.ExtraServices["microcode"], detectMicrocode()...).
+		Build()
 
 	args := append([]string{"/mnt"}, pkgs...)
 	if err := RunDry(cfg, log, "pacstrap", args...); err != nil {

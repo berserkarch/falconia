@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"falconia/config"
+	"falconia/data"
 	"falconia/installer"
 	"falconia/style"
 
@@ -22,97 +23,87 @@ type installStep struct {
 	run   func(*config.InstallConfig, installer.LineHandler) error
 }
 
-func buildSteps(cfg *config.InstallConfig) []installStep {
-	steps := []installStep{
-		{"Verify internet", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.CheckInternet(log)
-		}},
-		{"Sync system clock", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.SyncClock(log)
-		}},
-	}
-
-	if cfg.RankMirrors {
-		steps = append(steps, installStep{"Rank mirrors", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.RankMirrors(c, log)
-		}})
-	}
-
-	steps = append(
-		steps,
-		installStep{"Partition disk", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.PartitionDisk(c, log)
-		}},
-		installStep{"Format filesystems", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.FormatDisks(c, log)
-		}},
-		installStep{"Mount filesystems", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.MountDisks(c, log)
-		}},
-		installStep{"Copy live environment files", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.CopyLiveFiles(c, log)
-		}},
-		installStep{"Install base system (pacstrap)", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.Pacstrap(c, log)
-		}},
-		installStep{"Generate fstab", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.GenFstab(c, log)
-		}},
-		installStep{"Set timezone", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.SetTimezone(c, log)
-		}},
-	)
-
-	if cfg.EncryptDisk {
-		steps = append(steps, installStep{"Write crypttab", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.GenCrypttab(c, log)
-		}})
-	}
-
-	steps = append(steps,
-		installStep{"Set locale", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.SetLocale(c, log)
-		}},
-		installStep{"Configure network", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.ConfigureNetwork(c, log)
-		}},
-		installStep{"Set hostname", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.SetHostname(c, log)
-		}},
-		installStep{"Set root password", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.SetRootPassword(c, log)
-		}},
-		installStep{"Create users", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.CreateUsers(c, log)
-		}},
-		installStep{"Install bootloader", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.InstallBootloader(c, log)
-		}},
-	)
-
-	if cfg.DesktopEnv != "none" && cfg.DesktopEnv != "" {
-		steps = append(steps, installStep{"Install desktop environment", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.InstallDesktop(c, log)
-		}})
-	}
-
-	// Always include this step: InstallPackages handles ExtraPackages AND ExtraServices
-	// (docker, tailscale, etc.) AND boolean flags (Bluetooth, SSH, Cups). Skipping when
-	// ExtraPackages is empty would silently leave service-dependency packages uninstalled.
-	steps = append(steps, installStep{"Install extra packages", func(c *config.InstallConfig, log installer.LineHandler) error {
+// stepRegistry maps each StepKey from data.Pipeline to its implementation.
+// To add a new step: declare the key in data/flow.go, add it to data.Pipeline,
+// then register the implementation here.
+var stepRegistry = map[data.StepKey]func(*config.InstallConfig, installer.LineHandler) error{
+	data.StepVerifyInternet: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.CheckInternet(log)
+	},
+	data.StepSyncClock: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.SyncClock(log)
+	},
+	data.StepRankMirrors: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.RankMirrors(c, log)
+	},
+	data.StepPartitionDisk: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.PartitionDisk(c, log)
+	},
+	data.StepFormatDisks: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.FormatDisks(c, log)
+	},
+	data.StepMountDisks: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.MountDisks(c, log)
+	},
+	data.StepCopyLiveFiles: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.CopyLiveFiles(c, log)
+	},
+	data.StepPacstrap: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.Pacstrap(c, log)
+	},
+	data.StepGenFstab: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.GenFstab(c, log)
+	},
+	data.StepSetTimezone: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.SetTimezone(c, log)
+	},
+	data.StepWriteCrypttab: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.GenCrypttab(c, log)
+	},
+	data.StepSetLocale: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.SetLocale(c, log)
+	},
+	data.StepConfigNetwork: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.ConfigureNetwork(c, log)
+	},
+	data.StepSetHostname: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.SetHostname(c, log)
+	},
+	data.StepRootPassword: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.SetRootPassword(c, log)
+	},
+	data.StepCreateUsers: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.CreateUsers(c, log)
+	},
+	data.StepBootloader: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.InstallBootloader(c, log)
+	},
+	data.StepInstallDesktop: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.InstallDesktop(c, log)
+	},
+	data.StepInstallPkgs: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.InstallPackages(c, log)
-	}})
+	},
+	data.StepEnableServices: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.EnableServices(c, log)
+	},
+	data.StepCleanup: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.Cleanup(c, log)
+	},
+}
 
-	steps = append(
-		steps,
-		installStep{"Enable services", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.EnableServices(c, log)
-		}},
-		installStep{"Unmount & cleanup", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.Cleanup(c, log)
-		}},
-	)
-
+func buildSteps(cfg *config.InstallConfig) []installStep {
+	var steps []installStep
+	for _, def := range data.Pipeline {
+		if def.When != nil && !def.When(cfg) {
+			continue
+		}
+		fn, ok := stepRegistry[def.Key]
+		if !ok {
+			panic("no implementation registered for step: " + string(def.Key))
+		}
+		steps = append(steps, installStep{def.Label, fn})
+	}
 	return steps
 }
 

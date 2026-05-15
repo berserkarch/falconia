@@ -111,26 +111,3 @@ func DEDisplayManager(de string) string {
 	}
 }
 
-// DEPackages returns the pacman package group(s) for a given DE.
-func DEPackages(de string) []string {
-	switch de {
-	case "gnome":
-		return []string{"gnome", "gnome-extra", "gdm"}
-	case "kde":
-		return []string{"plasma", "plasma-desktop", "plasma-meta", "sddm", "berserk-user-config", "berserk-config-kde", "xf86-input-libinput", "extra/xorg", "extra/xorg-xdpyinfo", "extra/xorg-server", "extra/xorg-xinit", "extra/xorg-xinput", "extra/xorg-xkill", "extra/xorg-xrandr"}
-	case "xfce":
-		return []string{"xfce4", "xfce4-goodies", "lightdm", "lightdm-gtk-greeter"}
-	case "hyprland":
-		return []string{
-			"hyprland", "xdg-desktop-portal-hyprland", "waybar", "sddm",
-			"kitty", "wofi", "mako", "polkit-kde-agent",
-		}
-	case "i3":
-		return []string{
-			"i3-wm", "i3status", "i3lock", "dmenu", "sddm",
-			"xorg", "xterm", "picom", "nitrogen",
-		}
-	default:
-		return nil
-	}
-}

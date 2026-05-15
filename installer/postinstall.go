@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"falconia/config"
+	"falconia/data"
 )
 
 // InstallDesktop installs the chosen DE and its display manager.
@@ -14,7 +15,7 @@ func InstallDesktop(cfg *config.InstallConfig, log LineHandler) error {
 		return nil
 	}
 
-	pkgs := config.DEPackages(cfg.DesktopEnv)
+	pkgs := data.New().AddMap(data.ByDE, cfg.DesktopEnv).Build()
 	if len(pkgs) == 0 {
 		return nil
 	}
@@ -23,45 +24,20 @@ func InstallDesktop(cfg *config.InstallConfig, log LineHandler) error {
 	return RunChrootDry(cfg, log, "pacman", args...)
 }
 
-// InstallPackages installs the user's selected extra packages and service dependencies.
+// InstallPackages installs user-selected extra packages and all service
+// dependencies derived from config flags.
 func InstallPackages(cfg *config.InstallConfig, log LineHandler) error {
-	pkgs := append([]string{}, cfg.ExtraPackages...)
+	p := data.New().
+		Add(cfg.ExtraPackages...).
+		AddIf(cfg.EnableBluetooth, data.ByService["bluetooth"]...).
+		AddIf(cfg.EnableCups, data.ByService["cups"]...).
+		AddIf(cfg.EnableSSH, data.ByService["ssh"]...)
 
-	// Append packages required for extra services
-	if cfg.ExtraServices["docker"] {
-		pkgs = append(pkgs, "docker")
-	}
-	if cfg.ExtraServices["tailscale"] {
-		pkgs = append(pkgs, "tailscale")
-	}
-	if cfg.ExtraServices["avahi"] {
-		pkgs = append(pkgs, "avahi")
-	}
-	if cfg.ExtraServices["tlp"] {
-		pkgs = append(pkgs, "tlp")
-	}
-	if cfg.ExtraServices["ufw"] {
-		pkgs = append(pkgs, "ufw")
-	}
-	if cfg.ExtraServices["flatpak"] {
-		pkgs = append(pkgs, "flatpak")
-	}
-	if cfg.ExtraServices["snap"] {
-		pkgs = append(pkgs, "snapd")
-	}
-	if cfg.ExtraServices["zram"] {
-		pkgs = append(pkgs, "zram-generator")
-	}
-	if cfg.EnableBluetooth {
-		pkgs = append(pkgs, "bluez", "bluez-utils")
-	}
-	if cfg.EnableCups {
-		pkgs = append(pkgs, "cups")
-	}
-	if cfg.EnableSSH {
-		pkgs = append(pkgs, "openssh")
+	for svc, enabled := range cfg.ExtraServices {
+		p.AddIf(enabled, data.ByService[svc]...)
 	}
 
+	pkgs := p.Build()
 	if len(pkgs) == 0 {
 		log("No extra packages selected, skipping.")
 		return nil
@@ -73,45 +49,41 @@ func InstallPackages(cfg *config.InstallConfig, log LineHandler) error {
 
 // EnableServices enables systemd services based on config flags.
 func EnableServices(cfg *config.InstallConfig, log LineHandler) error {
-	services := []string{"NetworkManager", "sddm"} // always
+	seen := map[string]struct{}{}
+	add := func(units ...string) {
+		for _, u := range units {
+			seen[u] = struct{}{}
+		}
+	}
 
+	add(data.AlwaysEnable...)
+	if dm, ok := data.DisplayManagerByDE[cfg.DesktopEnv]; ok {
+		add(dm)
+	}
 	if cfg.EnableBluetooth {
-		services = append(services, "bluetooth")
+		add(data.ByServiceFlag["bluetooth"]...)
 	}
 	if cfg.EnableCups {
-		services = append(services, "cups")
+		add(data.ByServiceFlag["cups"]...)
 	}
 	if cfg.EnableSSH {
-		services = append(services, "sshd")
+		add(data.ByServiceFlag["ssh"]...)
 	}
-	if cfg.DesktopEnv != "none" && cfg.DisplayManager != "" {
-		services = append(services, cfg.DisplayManager)
-	}
-	if cfg.ExtraServices["docker"] {
-		services = append(services, "docker")
-	}
-	if cfg.ExtraServices["tailscale"] {
-		services = append(services, "tailscaled")
-	}
-	if cfg.ExtraServices["avahi"] {
-		services = append(services, "avahi-daemon")
-	}
-	if cfg.ExtraServices["tlp"] {
-		services = append(services, "tlp")
-	}
-	if cfg.ExtraServices["ufw"] {
-		services = append(services, "ufw")
-	}
-	if cfg.ExtraServices["snap"] {
-		services = append(services, "snapd.socket")
-	}
-	if cfg.ExtraServices["trim"] {
-		services = append(services, "fstrim.timer")
+	for svc, on := range cfg.ExtraServices {
+		if on {
+			add(data.ByServiceFlag[svc]...)
+		}
 	}
 
-	for _, svc := range services {
+	for svc := range seen {
 		if err := RunChrootDry(cfg, log, "systemctl", "enable", svc); err != nil {
 			log("Warning: Failed to enable " + svc)
+		}
+	}
+
+	for _, svc := range data.AlwaysDisable {
+		if err := RunChrootDry(cfg, log, "systemctl", "disable", svc); err != nil {
+			log("Warning: Failed to disable " + svc)
 		}
 	}
 
