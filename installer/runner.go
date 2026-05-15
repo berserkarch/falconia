@@ -97,8 +97,3 @@ func RunChrootDry(cfg *config.InstallConfig, handler LineHandler, name string, a
 func RunSh(handler LineHandler, script string) error {
 	return Run(handler, "/bin/sh", "-c", script)
 }
-
-// RunChrootSh runs a shell script string inside arch-chroot /mnt.
-func RunChrootSh(handler LineHandler, script string) error {
-	return RunChroot(handler, "/bin/sh", "-c", script)
-}

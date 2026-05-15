@@ -299,7 +299,28 @@ func (m ProgressModel) viewRunning() string {
 	var b strings.Builder
 	b.WriteString(style.StyleTitle.Render("INSTALLING BERSERKARCH") + "\n\n")
 
-	for i, s := range m.steps {
+	// Sliding window: show at most 8 steps centred on the current one.
+	const windowSize = 8
+	const completedShown = 2 // completed steps visible above current
+
+	start := m.current - completedShown
+	if start < 0 {
+		start = 0
+	}
+	end := start + windowSize
+	if end > len(m.steps) {
+		end = len(m.steps)
+		if start = end - windowSize; start < 0 {
+			start = 0
+		}
+	}
+
+	if start > 0 {
+		b.WriteString(style.StyleMuted.Render(fmt.Sprintf("  ↑ %d completed\n", start)))
+	}
+
+	for i := start; i < end; i++ {
+		s := m.steps[i]
 		var icon string
 		switch {
 		case i < m.current:
@@ -317,6 +338,10 @@ func (m ProgressModel) viewRunning() string {
 			label = style.StyleMuted.Render(label)
 		}
 		b.WriteString(fmt.Sprintf("%s  %s\n", icon, label))
+	}
+
+	if end < len(m.steps) {
+		b.WriteString(style.StyleMuted.Render(fmt.Sprintf("  ↓ %d pending\n", len(m.steps)-end)))
 	}
 
 	b.WriteString("\n")

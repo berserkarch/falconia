@@ -305,10 +305,8 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 func Cleanup(cfg *config.InstallConfig, log LineHandler) error {
 	_ = RunDry(cfg, log, "swapoff", "-a")
 	err := RunDry(cfg, log, "umount", "-R", "/mnt")
-	if cfg.EncryptDisk && !cfg.DryRun {
+	if cfg.EncryptDisk {
 		_ = RunDry(cfg, log, "cryptsetup", "close", "cryptroot")
-	} else if cfg.EncryptDisk && cfg.DryRun {
-		log(styleGood("[DRY RUN] Would execute: ") + "cryptsetup close cryptroot")
 	}
 	return err
 }

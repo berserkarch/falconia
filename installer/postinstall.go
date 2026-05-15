@@ -80,13 +80,13 @@ func PostInstallCleanup(cfg *config.InstallConfig, log LineHandler) error {
 func EnableServices(cfg *config.InstallConfig, log LineHandler) error {
 	for _, svc := range data.Enable {
 		if err := RunChrootDry(cfg, log, "systemctl", "enable", svc); err != nil {
-			log("Warning: could not enable " + svc)
+			log("Warning: could not enable " + svc + ": " + err.Error())
 		}
 	}
 
 	for _, svc := range data.Disable {
 		if err := RunChrootDry(cfg, log, "systemctl", "disable", svc); err != nil {
-			log("Warning: could not disable " + svc)
+			log("Warning: could not disable " + svc + ": " + err.Error())
 		}
 	}
 
