@@ -29,7 +29,9 @@ const (
 	StepInstallDesktop StepKey = "install-desktop"
 	StepInstallPkgs    StepKey = "install-packages"
 	StepInstallDrivers StepKey = "install-drivers"
+	StepDetectWindows  StepKey = "detect-windows"
 	StepEnableServices StepKey = "enable-services"
+	StepPostCleanup    StepKey = "post-cleanup"
 	StepCleanup        StepKey = "cleanup"
 )
 
@@ -67,6 +69,7 @@ var Pipeline = []StepDef{
 	{Key: StepSetHostname, Label: "Set hostname"},
 	{Key: StepRootPassword, Label: "Set root password"},
 	{Key: StepCreateUsers, Label: "Create users"},
+	{Key: StepDetectWindows, Label: "Detect other OS", Soft: true},
 	{Key: StepBootloader, Label: "Install bootloader"},
 	{Key: StepInstallDesktop, Label: "Install desktop environment", When: func(c *config.InstallConfig) bool {
 		return c.DesktopEnv != "none" && c.DesktopEnv != ""
@@ -82,5 +85,6 @@ var Pipeline = []StepDef{
 			(c.Hardware.VM != "none" && c.Hardware.VM != "")
 	}},
 	{Key: StepEnableServices, Label: "Enable services"},
+	{Key: StepPostCleanup, Label: "Post-install cleanup"},
 	{Key: StepCleanup, Label: "Unmount & cleanup"},
 }

@@ -1,6 +1,8 @@
 package installer
 
 import (
+	"os"
+
 	"falconia/config"
 	"falconia/data"
 )
@@ -34,6 +36,42 @@ func InstallPackages(cfg *config.InstallConfig, log LineHandler) error {
 
 	args := append([]string{"-S", "--noconfirm"}, pkgs...)
 	return RunChrootDry(cfg, log, "pacman", args...)
+}
+
+// PostInstallCleanup performs final housekeeping on the installed system.
+func PostInstallCleanup(cfg *config.InstallConfig, log LineHandler) error {
+	// Replace the live system's machine ID with a fresh one for the new install.
+	if err := RunChrootDry(cfg, log, "systemd-machine-id-setup"); err != nil {
+		log("Warning: systemd-machine-id-setup: " + err.Error())
+	}
+
+	// Delete .pacnew files left behind when pacstrap writes config files that
+	// already exist (usually because we copied them from the live environment).
+	if !cfg.DryRun {
+		if err := Run(log, "find", "/mnt", "-name", "*.pacnew", "-delete"); err != nil {
+			log("Warning: .pacnew cleanup: " + err.Error())
+		}
+	} else {
+		log(styleGood("[DRY RUN] Would remove: ") + "*.pacnew files under /mnt")
+	}
+
+	// Enable persistent journal storage so logs survive reboots.
+	confDir := "/mnt/etc/systemd/journald.conf.d"
+	if !cfg.DryRun {
+		if err := os.MkdirAll(confDir, 0o755); err != nil {
+			log("Warning: create journald.conf.d: " + err.Error())
+			return nil
+		}
+		if err := writeChroot(confDir+"/00-persistence.conf", "[Journal]\nStorage=persistent\n"); err != nil {
+			log("Warning: write journald persistence config: " + err.Error())
+		} else {
+			log("$ wrote /etc/systemd/journald.conf.d/00-persistence.conf")
+		}
+	} else {
+		log(styleGood("[DRY RUN] Would write: ") + "/etc/systemd/journald.conf.d/00-persistence.conf")
+	}
+
+	return nil
 }
 
 // EnableServices enables and disables systemd units from data/services.go.

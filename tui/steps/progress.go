@@ -76,6 +76,9 @@ var stepRegistry = map[data.StepKey]func(*config.InstallConfig, installer.LineHa
 	data.StepCreateUsers: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.CreateUsers(c, log)
 	},
+	data.StepDetectWindows: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.DetectWindows(c, log)
+	},
 	data.StepBootloader: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.InstallBootloader(c, log)
 	},
@@ -90,6 +93,9 @@ var stepRegistry = map[data.StepKey]func(*config.InstallConfig, installer.LineHa
 	},
 	data.StepEnableServices: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.EnableServices(c, log)
+	},
+	data.StepPostCleanup: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.PostInstallCleanup(c, log)
 	},
 	data.StepCleanup: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.Cleanup(c, log)

@@ -140,6 +140,21 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 		}
 	}
 
+	// If Windows was detected, tell grub-mkconfig to include it via os-prober.
+	if cfg.WindowsEFIPath != "" {
+		if !cfg.DryRun {
+			err := RunChroot(log, "bash", "-c",
+				`grep -q "^#\?GRUB_DISABLE_OS_PROBER=" /etc/default/grub `+
+					`&& sed -i 's/^#\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/' /etc/default/grub `+
+					`|| echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub`)
+			if err != nil {
+				log("Warning: enable os-prober for dual-boot: " + err.Error())
+			}
+		} else {
+			log(styleGood("[DRY RUN] Would enable GRUB_DISABLE_OS_PROBER=false for dual-boot"))
+		}
+	}
+
 	return RunChrootDry(cfg, log, "grub-mkconfig", "-o", "/boot/grub/grub.cfg")
 }
 
@@ -232,6 +247,20 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 	} else {
 		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/boot/efi/loader/entries/arch.conf")
 		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/etc/kernel/cmdline")
+	}
+
+	// Windows dual-boot entry for systemd-boot.
+	if cfg.WindowsEFIPath != "" {
+		windowsEntry := "title   Windows\nefi     /EFI/Microsoft/Boot/bootmgfw.efi\n"
+		if !cfg.DryRun {
+			if err := writeChroot("/mnt/boot/efi/loader/entries/windows.conf", windowsEntry); err != nil {
+				log("Warning: write Windows boot entry: " + err.Error())
+			} else {
+				log("$ wrote /boot/efi/loader/entries/windows.conf")
+			}
+		} else {
+			log(styleGood("[DRY RUN] Would write: ") + "/mnt/boot/efi/loader/entries/windows.conf")
+		}
 	}
 
 	loaderConf := fmt.Sprintf("default arch\ntimeout %d\nconsole-mode max\neditor no\n", cfg.GrubTimeout)

@@ -82,6 +82,7 @@ var Base = []string{
 	"nano",
 	"netctl",
 	"ntfs-3g",
+	"os-prober",
 	"perl",
 	"python",
 	"s-nail",
@@ -101,8 +102,6 @@ var Base = []string{
 	"blackarch-mirrorlist",
 	"chaotic-mirrorlist",
 	// BerserkArch meta packages
-	"ttf-jetbrains-mono-nerd",
-	"ttf-firacode-nerd",
 	"plymouth",
 	"python-pipx",
 	"berserk-hooks",
@@ -170,6 +169,8 @@ var CommonDE = []string{
 	"xdg-utils",
 	"polkit",
 	"gvfs",
+	"ttf-jetbrains-mono-nerd",
+	"ttf-firacode-nerd",
 }
 
 // ByDE maps a desktop environment name to its pacman packages.

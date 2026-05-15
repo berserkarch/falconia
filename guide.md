@@ -49,14 +49,14 @@ falconia/
 │       └── progress.go          # Phase 2 — step registry, pipeline runner, log viewport
 └── installer/
     ├── runner.go                # Run, RunDry, RunChroot, RunChrootDry, runWithStdin
-    ├── detect.go                # DetectFirmware, ListDisks, liveIsoDisk, CheckInternet
+    ├── detect.go                # DetectFirmware, ListDisks, CheckInternet, DetectWindows
     ├── hardware.go              # DetectHardware — CPU, GPU, WiFi, VM, RAM, NVMe
     ├── disk.go                  # PartitionDisk, FormatDisks, MountDisks, Cleanup
     ├── base.go                  # Pacstrap, GenFstab, GenCrypttab
     ├── system.go                # SetTimezone, SetLocale, ConfigureNetwork, SetHostname, CreateUsers
     ├── bootloader.go            # InstallBootloader → installGrub / installSystemdBoot
     ├── drivers.go               # InstallDrivers → GPU, WiFi, VM guest tools
-    ├── postinstall.go           # InstallDesktop, InstallPackages, EnableServices
+    ├── postinstall.go           # InstallDesktop, InstallPackages, EnableServices, PostInstallCleanup
     ├── livefiles.go             # CopyLiveFiles
     ├── helpers.go               # writeChroot, appendFile, runOutput
     ├── locales.go               # ListLocales
@@ -96,6 +96,7 @@ Single struct passed to every installer function. Set during Phase 1, consumed d
 | `Bootloader` | string | `"grub"` or `"systemd-boot"` |
 | `GrubTimeout` | int | Bootloader menu timeout in seconds |
 | `RankMirrors` | bool | Run reflector before pacstrap |
+| `WindowsEFIPath` | string | Non-empty when a Windows install is detected; set by `DetectWindows()` |
 | `MountPoints` | `map[string]string` | Manual partitioning: mount point → device |
 | `DryRun` | bool | Skip actual command execution |
 
@@ -122,12 +123,15 @@ The `data/` package is the equivalent of Calamares `.conf` files — pure data, 
 
 ### `data/flow.go` — Pipeline (settings.conf equivalent)
 
-Defines the ordered install sequence. Each `StepDef` has a typed `StepKey`, a display label, and an optional condition function.
+Defines the ordered install sequence. Each `StepDef` has a typed `StepKey`, a display label, an optional condition function, and a `Soft bool`.
+
+`Soft: true` steps log a warning on failure and continue — they do not abort the installation. Use this for steps where failure is non-fatal (e.g. clock sync, mirror ranking, OS detection).
 
 ```go
 var Pipeline = []StepDef{
-    {StepVerifyInternet, "Verify internet", nil},                              // always
-    {StepRankMirrors, "Rank mirrors", func(c *InstallConfig) bool {            // conditional
+    {Key: StepVerifyInternet, Label: "Verify internet"},
+    {Key: StepSyncClock,      Label: "Sync system clock", Soft: true},
+    {Key: StepRankMirrors,    Label: "Rank mirrors", Soft: true, When: func(c *InstallConfig) bool {
         return c.RankMirrors
     }},
     // ...
@@ -136,7 +140,7 @@ var Pipeline = []StepDef{
 
 To add a new step:
 1. Declare a `StepKey` constant in `data/flow.go`
-2. Add a `StepDef` to `Pipeline` at the right position
+2. Add a `StepDef` to `Pipeline` at the right position (with `Soft: true` if appropriate)
 3. Register the implementation function in `stepRegistry` in `tui/steps/progress.go`
 
 ### `data/services.go` — Services (services-systemd.conf equivalent)
@@ -227,30 +231,34 @@ There is no services toggle step. Services are data-driven and fully automatic.
 
 Driven by `data.Pipeline`. `buildSteps()` in `progress.go` iterates `data.Pipeline`, filters by condition, and looks up each step's implementation in `stepRegistry`. Adding a step requires touching three places: `data/flow.go` (key + definition), `progress.go` (registry entry), and `installer/` (implementation function).
 
-| # | Label | Condition |
-|---|---|---|
-| 1 | Verify internet | always |
-| 2 | Sync system clock | always |
-| 3 | Rank mirrors | `cfg.RankMirrors` |
-| 4 | Partition disk | always |
-| 5 | Format filesystems | always |
-| 6 | Mount filesystems | always |
-| 7 | Copy live environment files | always |
-| 8 | Install base system (pacstrap) | always |
-| 9 | Generate fstab | always |
-| 10 | Set timezone | always |
-| 11 | Write crypttab | `cfg.EncryptDisk` |
-| 12 | Set locale | always |
-| 13 | Configure network | always |
-| 14 | Set hostname | always |
-| 15 | Set root password | always |
-| 16 | Create users | always |
-| 17 | Install bootloader | always |
-| 18 | Install desktop environment | `cfg.DesktopEnv != "none"` |
-| 19 | Install extra packages | always |
-| 20 | Install hardware drivers | NVIDIA or Broadcom or VM detected |
-| 21 | Enable services | always |
-| 22 | Unmount & cleanup | always |
+**Soft steps** log a yellow warning on failure and continue — the install does not abort.
+
+| # | Label | Condition | Soft |
+|---|---|---|---|
+| 1 | Verify internet | always | — |
+| 2 | Sync system clock | always | ✓ |
+| 3 | Rank mirrors | `cfg.RankMirrors` | ✓ |
+| 4 | Partition disk | always | — |
+| 5 | Format filesystems | always | — |
+| 6 | Mount filesystems | always | — |
+| 7 | Copy live environment files | always | — |
+| 8 | Install base system (pacstrap) | always | — |
+| 9 | Generate fstab | always | — |
+| 10 | Set timezone | always | — |
+| 11 | Write crypttab | `cfg.EncryptDisk` | — |
+| 12 | Set locale | always | — |
+| 13 | Configure network | always | — |
+| 14 | Set hostname | always | — |
+| 15 | Set root password | always | — |
+| 16 | Create users | always | — |
+| 17 | Detect other OS | always | ✓ |
+| 18 | Install bootloader | always | — |
+| 19 | Install desktop environment | `cfg.DesktopEnv != "none"` | — |
+| 20 | Install extra packages | always | — |
+| 21 | Install hardware drivers | NVIDIA or Broadcom or VM detected | — |
+| 22 | Enable services | always | — |
+| 23 | Post-install cleanup | always | — |
+| 24 | Unmount & cleanup | always | — |
 
 ---
 
@@ -310,6 +318,10 @@ GRUB also runs `grub-install --removable` as an NVRAM-fallback for firmware that
 
 systemd-boot writes `/mnt/etc/kernel/cmdline` so future `kernel-install` invocations (triggered by kernel package upgrades) preserve the correct parameters.
 
+**Dual-boot:** when `cfg.WindowsEFIPath != ""` (set by the `detect-windows` step):
+- GRUB: adds `GRUB_DISABLE_OS_PROBER=false` to `/etc/default/grub` before `grub-mkconfig`; `grub-mkconfig` picks up Windows automatically via `os-prober`
+- systemd-boot: writes `/boot/efi/loader/entries/windows.conf` pointing to `/EFI/Microsoft/Boot/bootmgfw.efi`
+
 ### drivers.go — Hardware driver installation
 
 `InstallDrivers()` is the Phase 2 step for hardware-specific packages:
@@ -318,13 +330,18 @@ systemd-boot writes `/mnt/etc/kernel/cmdline` so future `kernel-install` invocat
 - **Broadcom WiFi** — installs `broadcom-wl` (normal kernels) or `broadcom-wl-dkms` (`linux-lts`)
 - **VM guest tools** — installs from `data.ByVM[cfg.Hardware.VM]`; removes `power-profiles-daemon` (irrelevant in VMs)
 
-### postinstall.go — Desktop, packages, services
+### postinstall.go — Desktop, packages, services, cleanup
 
 **`InstallDesktop`** — installs `data.CommonDE` (shared xorg/audio/kitty foundation) + `data.ByDE[cfg.DesktopEnv]` (DE-specific), deduplicated.
 
 **`InstallPackages`** — installs only `cfg.ExtraPackages` (what the user picked in the packages step). No flag-based additions.
 
 **`EnableServices`** — iterates `data.Enable`, then `data.Disable`, then sets `graphical.target`. No conditionals anywhere.
+
+**`PostInstallCleanup`** — final housekeeping, always runs before unmounting:
+- `systemd-machine-id-setup` in chroot — replaces the live ISO's machine ID with a fresh one
+- `find /mnt -name "*.pacnew" -delete` — removes config remnants from pacstrap
+- Writes `/etc/systemd/journald.conf.d/00-persistence.conf` with `Storage=persistent` — journal survives reboots
 
 ### livefiles.go — Live ISO file copy
 
@@ -337,11 +354,18 @@ var liveFiles = []string{
 
 Runs before pacstrap so the BerserkArch repo config is in place when packages are installed. Add entries here as needed.
 
-### detect.go — Disk detection
+### detect.go — Disk and OS detection
 
 `ListDisks()` excludes:
 - Loop devices + optical drives (`lsblk -e 7,11`)
 - The live ISO boot medium (identified by `/run/archiso/bootmnt` in `/proc/mounts`, parent disk via `lsblk PKNAME`)
+
+`CheckInternet()` retries up to 3 times with a 3-second timeout per attempt (2-second pause between) before failing. A single dropped packet does not abort the installation.
+
+`DetectWindows()` runs as a Soft step after `create-users`:
+1. Runs `os-prober` on the live system; parses output for lines where the label or shortname contains "windows"
+2. Falls back to checking `os.Stat("/mnt/boot/efi/EFI/Microsoft/Boot/bootmgfw.efi")` (UEFI systems only)
+3. Sets `cfg.WindowsEFIPath` to a non-empty value if Windows is found; bootloader step uses it
 
 ---
 

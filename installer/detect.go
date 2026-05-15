@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"falconia/config"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -110,6 +112,43 @@ func CheckInternet(log LineHandler) error {
 		}
 	}
 	return fmt.Errorf("no internet connection after %d attempts — check your network", attempts)
+}
+
+// DetectWindows probes for an existing Windows installation and sets
+// cfg.WindowsEFIPath to a non-empty value when one is found.
+// Runs os-prober first; falls back to checking the standard Windows EFI path on
+// the mounted ESP. This step is Soft — not finding Windows is fine.
+func DetectWindows(cfg *config.InstallConfig, log LineHandler) error {
+	if cfg.DryRun {
+		log(styleGood("[DRY RUN] Would probe for Windows installation"))
+		return nil
+	}
+
+	// os-prober format: partition[@efi-path]:label:shortname:type
+	if out, err := runOutput("os-prober"); err == nil && strings.TrimSpace(out) != "" {
+		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+			parts := strings.SplitN(strings.TrimSpace(line), ":", 4)
+			if len(parts) < 4 {
+				continue
+			}
+			label, shortname := strings.ToLower(parts[1]), strings.ToLower(parts[2])
+			if strings.Contains(label, "windows") || strings.Contains(shortname, "windows") {
+				cfg.WindowsEFIPath = strings.Split(parts[0], "@")[0]
+				log("Detected Windows on " + cfg.WindowsEFIPath)
+				return nil
+			}
+		}
+	}
+
+	// Fallback: check for the Windows EFI binary directly on the mounted ESP.
+	if _, err := os.Stat("/mnt/boot/efi/EFI/Microsoft/Boot/bootmgfw.efi"); err == nil {
+		cfg.WindowsEFIPath = "uefi"
+		log("Detected Windows EFI at /EFI/Microsoft/Boot/bootmgfw.efi")
+		return nil
+	}
+
+	log("No other OS detected.")
+	return nil
 }
 
 // SyncClock syncs the system clock via timedatectl.

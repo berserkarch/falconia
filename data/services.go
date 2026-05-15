@@ -12,8 +12,8 @@ var Enable = []string{
 	"auditd",
 
 	// Display managers — only the installed one will succeed
-	"gdm",
 	"sddm",
+	"gdm",
 	"lightdm",
 
 	// User-installed services — succeed only if the package was selected
@@ -40,6 +40,6 @@ var Enable = []string{
 
 // Disable is the complete list of systemd units to disable on every install.
 var Disable = []string{
-	"bluetooth",  // off by default; user enables manually post-install if needed
+	"bluetooth",   // off by default; user enables manually post-install if needed
 	"pacman-init", // live-ISO only, must not run on installed system
 }

@@ -51,12 +51,15 @@ Every installer function respects `cfg.DryRun`. The full Phase 2 pipeline must b
 - Plymouth: `add_dracutmodules+=" plymouth "`, `plymouth-set-default-theme berserk`, `quiet splash` in both bootloaders
 - Microcode: auto-detected from `cfg.Hardware.CPU`, installed via `data.ByMicrocode`
 - Kernel cmdline: `quiet splash` + `nvme_load=YES` (NVMe) + `nvidia-drm.modeset=1` (NVIDIA) — all hardware-driven
-- GRUB: UEFI + BIOS, removable fallback, cryptodisk support, `grub-mkconfig`
-- systemd-boot: kernel + initramfs + microcode copied to ESP, loader entry + `/etc/kernel/cmdline`
+- GRUB: UEFI + BIOS, removable fallback, cryptodisk support, `grub-mkconfig`; dual-boot: `GRUB_DISABLE_OS_PROBER=false` when Windows detected
+- systemd-boot: kernel + initramfs + microcode copied to ESP, loader entry + `/etc/kernel/cmdline`; dual-boot: writes `windows.conf` loader entry
 - Driver installation: NVIDIA (`nvidia` or `nvidia-open` based on device ID), hybrid GPU (`nvidia-prime`), Broadcom WiFi (`broadcom-wl` or `broadcom-wl-dkms` for LTS), VM guest tools, post-install dracut rebuild + grub-mkconfig
 - Services: `data.Enable` tried unconditionally, `data.Disable` applied, `systemctl set-default graphical.target`
 - Live file copy: `/etc/pacman.conf` from live ISO before pacstrap
 - Copy live files step runs before pacstrap so custom repos are in place
+- Windows detection: `DetectWindows()` runs `os-prober`, falls back to checking `/mnt/boot/efi/EFI/Microsoft/Boot/bootmgfw.efi`; result stored in `cfg.WindowsEFIPath`
+- Post-install cleanup: `systemd-machine-id-setup`, delete `.pacnew` files, write `journald.conf.d/00-persistence.conf`
+- Pipeline resilience: `SyncClock` and `RankMirrors` are Soft steps (warn and continue on failure); `CheckInternet` retries 3× with 3 s timeout before failing
 
 ---
 
@@ -65,8 +68,8 @@ Every installer function respects `cfg.DryRun`. The full Phase 2 pipeline must b
 | Phase | Description | Status |
 |---|---|---|
 | B | Swap overhaul (none/partition/file/suspend modes) | Pending |
-| E | Windows / dual-boot detection + boot entry | Pending |
-| F | Post-install cleanup (machine ID, .pacnew, journal) | Pending |
+| E | Windows / dual-boot detection + boot entry | **Done** |
+| F | Post-install cleanup (machine ID, .pacnew, journal) | **Done** |
 | G | Btrfs subvolumes (`/@`, `/@home`, `/@cache`, `/@log`) | Pending (last) |
 
 ---
@@ -210,30 +213,34 @@ No services toggle step — services are data-driven and fully automatic.
 
 Driven by `data.Pipeline`. Implementations registered in `stepRegistry` in `progress.go`.
 
-| # | Key | Label | Condition |
-|---|---|---|---|
-| 1 | `verify-internet` | Verify internet | always |
-| 2 | `sync-clock` | Sync system clock | always |
-| 3 | `rank-mirrors` | Rank mirrors | `cfg.RankMirrors` |
-| 4 | `partition-disk` | Partition disk | always |
-| 5 | `format-disks` | Format filesystems | always |
-| 6 | `mount-disks` | Mount filesystems | always |
-| 7 | `copy-live-files` | Copy live environment files | always |
-| 8 | `pacstrap` | Install base system | always |
-| 9 | `gen-fstab` | Generate fstab | always |
-| 10 | `set-timezone` | Set timezone | always |
-| 11 | `write-crypttab` | Write crypttab | `cfg.EncryptDisk` |
-| 12 | `set-locale` | Set locale | always |
-| 13 | `config-network` | Configure network | always |
-| 14 | `set-hostname` | Set hostname | always |
-| 15 | `root-password` | Set root password | always |
-| 16 | `create-users` | Create users | always |
-| 17 | `bootloader` | Install bootloader | always |
-| 18 | `install-desktop` | Install desktop environment | `cfg.DesktopEnv != "none"` |
-| 19 | `install-packages` | Install extra packages | always |
-| 20 | `install-drivers` | Install hardware drivers | NVIDIA/Broadcom/VM detected |
-| 21 | `enable-services` | Enable services | always |
-| 22 | `cleanup` | Unmount & cleanup | always |
+Steps marked **Soft** log a warning and continue on failure instead of aborting.
+
+| # | Key | Label | Condition | Soft |
+|---|---|---|---|---|
+| 1 | `verify-internet` | Verify internet | always | — |
+| 2 | `sync-clock` | Sync system clock | always | ✓ |
+| 3 | `rank-mirrors` | Rank mirrors | `cfg.RankMirrors` | ✓ |
+| 4 | `partition-disk` | Partition disk | always | — |
+| 5 | `format-disks` | Format filesystems | always | — |
+| 6 | `mount-disks` | Mount filesystems | always | — |
+| 7 | `copy-live-files` | Copy live environment files | always | — |
+| 8 | `pacstrap` | Install base system | always | — |
+| 9 | `gen-fstab` | Generate fstab | always | — |
+| 10 | `set-timezone` | Set timezone | always | — |
+| 11 | `write-crypttab` | Write crypttab | `cfg.EncryptDisk` | — |
+| 12 | `set-locale` | Set locale | always | — |
+| 13 | `config-network` | Configure network | always | — |
+| 14 | `set-hostname` | Set hostname | always | — |
+| 15 | `root-password` | Set root password | always | — |
+| 16 | `create-users` | Create users | always | — |
+| 17 | `detect-windows` | Detect other OS | always | ✓ |
+| 18 | `bootloader` | Install bootloader | always | — |
+| 19 | `install-desktop` | Install desktop environment | `cfg.DesktopEnv != "none"` | — |
+| 20 | `install-packages` | Install extra packages | always | — |
+| 21 | `install-drivers` | Install hardware drivers | NVIDIA/Broadcom/VM detected | — |
+| 22 | `enable-services` | Enable services | always | — |
+| 23 | `post-cleanup` | Post-install cleanup | always | — |
+| 24 | `cleanup` | Unmount & cleanup | always | — |
 
 ---
 
@@ -241,18 +248,6 @@ Driven by `data.Pipeline`. Implementations registered in `stepRegistry` in `prog
 
 ### Phase B — Swap Overhaul
 Add `SwapMode` type (`none` / `partition` / `file` / `suspend`) to `config/config.go`. Update disk TUI step to show a mode picker instead of just a size field. Update `PartitionDisk` to skip the swap partition for file/none/suspend modes. Implement swap file creation post-mount. For suspend mode: auto-size to RAM, add `resume=` to kernel cmdline. Handle btrfs + swap file (`chattr +C` before `mkswap`). Update `rootPartition()` to key off `SwapMode == SwapPartition` instead of `SwapSize > 0`.
-
-### Phase E — Windows / Dual-Boot
-Add `os-prober` to `data.Base`. Write `DetectWindows()` in `installer/detect.go` — runs post-partitioning, returns the Windows partition if found. Add `StepDetectWindows` to pipeline. For GRUB: set `GRUB_DISABLE_OS_PROBER=false` (grub-mkconfig handles the rest). For systemd-boot: write `/boot/efi/loader/entries/windows.conf` manually.
-
-### Phase F — Post-Install Cleanup
-Write `PostInstallCleanup()` in `installer/postinstall.go` covering:
-- `systemd-machine-id-setup` — generate machine ID
-- Remove wrong-CPU microcode package (`pacman -R amd-ucode` on Intel, vice versa)
-- `find /mnt -name "*.pacnew" -delete`
-- Set journal storage to persistent (`Storage=auto` in `journald.conf`)
-
-Add `StepPostCleanup` to `data/flow.go` before `StepCleanup`.
 
 ### Phase G — Btrfs Subvolumes (last)
 When `cfg.Filesystem == "btrfs"`, `FormatDisks` should create named subvolumes after `mkfs.btrfs`: mount root, `btrfs subvolume create /@`, `/@home`, `/@cache`, `/@log`, unmount, then remount at `subvol=/@`. `MountDisks` binds each subvolume. `genfstab` captures them. Handle swap file on btrfs (`chattr +C` + offset calculation for suspend).

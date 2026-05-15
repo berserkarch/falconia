@@ -70,7 +70,8 @@ type InstallConfig struct {
 	GrubTimeout int    // seconds (GRUB only)
 
 	// --- Post-install ---
-	RankMirrors bool
+	RankMirrors    bool
+	WindowsEFIPath string // non-empty if a Windows installation was detected
 
 	// --- Manual Partitioning ---
 	MountPoints map[string]string // mount point -> partition (e.g. "/" -> "/dev/sda3")
