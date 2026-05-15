@@ -27,25 +27,7 @@ func DetectFirmware() string {
 
 // ListDisks returns all physical block devices (type "disk") via lsblk.
 func ListDisks() ([]DiskInfo, error) {
-	out, err := exec.Command("lsblk", "-d", "-o", "PATH,MODEL,SIZE", "--noheadings", "--json").Output()
-	if err != nil {
-		// fallback: parse plain text
-		return listDisksFallback()
-	}
-	// simple line parser (avoid importing encoding/json for brevity)
-	var disks []DiskInfo
-	scanner := bufio.NewScanner(strings.NewReader(string(out)))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, `"path"`) {
-			// we'll just use the fallback parser; JSON parsing without import is fragile
-			break
-		}
-	}
-	if len(disks) == 0 {
-		return listDisksFallback()
-	}
-	return disks, nil
+	return listDisksFallback()
 }
 
 func listDisksFallback() ([]DiskInfo, error) {
@@ -81,9 +63,10 @@ func listDisksFallback() ([]DiskInfo, error) {
 	return disks, nil
 }
 
-// CheckInternet returns nil if archlinux.org is reachable.
+// CheckInternet returns nil if an internet connection is detected.
+// We ping a reliable IP (1.1.1.1) to avoid DNS resolution delays.
 func CheckInternet(log LineHandler) error {
-	return Run(log, "ping", "-c", "1", "-W", "3", "archlinux.org")
+	return Run(log, "ping", "-c", "1", "-W", "1", "1.1.1.1")
 }
 
 // SyncClock syncs the system clock via timedatectl.

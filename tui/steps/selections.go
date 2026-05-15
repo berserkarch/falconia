@@ -97,10 +97,10 @@ func NewKernel(cfg *config.InstallConfig) radioModel {
 // ── Step 07: Desktop Environment ────────────────────────────────────────────
 
 type desktopOption struct {
-	value   string
-	label   string
-	desc    string
-	sizeMB  int
+	value  string
+	label  string
+	desc   string
+	sizeMB int
 }
 
 // DesktopModel is a specialised radio for DE selection that shows size estimates.

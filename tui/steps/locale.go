@@ -290,7 +290,7 @@ func (m LocaleModel) View() string {
 		cursorTZ = style.StyleSelected.Render("▶ ")
 	}
 	b.WriteString(cursorTZ + style.StyleKey.Render(fmt.Sprintf("%-12s", "Timezone")) + m.tzInput.View() + "\n")
-	
+
 	// TZ Autocomplete suggestions
 	if m.cursor == localeFieldTZ && len(m.filteredZones) > 0 {
 		for i, z := range m.filteredZones {

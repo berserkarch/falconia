@@ -4,6 +4,7 @@ import (
 	"falconia/config"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // PartitionDisk wipes and partitions cfg.Disk according to firmware and scheme.
@@ -157,13 +158,35 @@ func FormatDisks(cfg *config.InstallConfig, log LineHandler) error {
 			return fmt.Errorf("mkswap: %w", err)
 		}
 	} else {
-		// no swap; root is partition 2 for BIOS, still 3 for UEFI
-		if cfg.Firmware == "bios" {
-			rootPart = disk + p + "2"
-		}
+		// no swap: root is always partition 2 regardless of firmware
+		// (BIOS: bios-boot=1, root=2; UEFI: esp=1, root=2)
+		rootPart = disk + p + "2"
 	}
 
 	var mkfsCmd []string
+
+	if cfg.EncryptDisk {
+		log("Encrypting root partition with LUKS...")
+		if !cfg.DryRun {
+			// Pass passphrase via stdin without a trailing newline.
+			// cryptsetup -d - reads stdin until EOF and stores every byte as the key.
+			// If a newline is included here it becomes part of the key, but the boot-time
+			// password prompt strips Enter before sending to cryptsetup open → mismatch.
+			if err := runWithStdin(log, strings.NewReader(cfg.EncryptionPass),
+				"cryptsetup", "-q", "luksFormat", "--type", "luks1", rootPart, "-d", "-"); err != nil {
+				return fmt.Errorf("luksFormat: %w", err)
+			}
+			if err := runWithStdin(log, strings.NewReader(cfg.EncryptionPass),
+				"cryptsetup", "open", rootPart, "cryptroot", "-d", "-"); err != nil {
+				return fmt.Errorf("luksOpen: %w", err)
+			}
+		} else {
+			log(styleGood("[DRY RUN] Would execute: ") + "cryptsetup luksFormat " + rootPart)
+			log(styleGood("[DRY RUN] Would execute: ") + "cryptsetup open " + rootPart + " cryptroot")
+		}
+		rootPart = "/dev/mapper/cryptroot"
+	}
+
 	switch cfg.Filesystem {
 	case "btrfs":
 		mkfsCmd = []string{"mkfs.btrfs", "-f", rootPart}
@@ -224,8 +247,12 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 	rootPart := disk + p + "3"
 	swapPart := disk + p + "2"
 
-	if cfg.SwapSize == 0 && cfg.Firmware == "bios" {
+	if cfg.SwapSize == 0 {
 		rootPart = disk + p + "2"
+	}
+
+	if cfg.EncryptDisk {
+		rootPart = "/dev/mapper/cryptroot"
 	}
 
 	// Mount root
@@ -261,5 +288,11 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 // Cleanup unmounts everything under /mnt and disables swap.
 func Cleanup(cfg *config.InstallConfig, log LineHandler) error {
 	_ = RunDry(cfg, log, "swapoff", "-a")
-	return RunDry(cfg, log, "umount", "-R", "/mnt")
+	err := RunDry(cfg, log, "umount", "-R", "/mnt")
+	if cfg.EncryptDisk && !cfg.DryRun {
+		_ = RunDry(cfg, log, "cryptsetup", "close", "cryptroot")
+	} else if cfg.EncryptDisk && cfg.DryRun {
+		log(styleGood("[DRY RUN] Would execute: ") + "cryptsetup close cryptroot")
+	}
+	return err
 }

@@ -20,6 +20,7 @@ type HostnameModel struct {
 }
 
 var hostnameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$`)
+var usernameRe = regexp.MustCompile(`^[a-z_][a-z0-9_\-]*$`)
 
 func NewHostname(cfg *config.InstallConfig) HostnameModel {
 	ti := textinput.New()
@@ -356,8 +357,8 @@ func (m UsersModel) handleUserEnter() (tea.Model, tea.Cmd) {
 			m.err = "Username cannot be empty"
 			return m, nil
 		}
-		if !hostnameRe.MatchString(un) {
-			m.err = "Invalid username"
+		if !usernameRe.MatchString(un) {
+			m.err = "Invalid username (lowercase letters, digits, hyphens, underscores; must start with a letter or _)"
 			return m, nil
 		}
 		up := m.pass.Value()
@@ -451,7 +452,7 @@ func (m UsersModel) View() string {
 		if i == m.shellIdx {
 			b.WriteString(style.StyleSelected.Render("[" + s + "]"))
 		} else {
-			b.WriteString(style.StyleMuted.Render(" "+s+" "))
+			b.WriteString(style.StyleMuted.Render(" " + s + " "))
 		}
 		b.WriteString("  ")
 	}

@@ -25,11 +25,6 @@ type PartitionMappingModel struct {
 	err   string
 
 	cursor partitionMappingField
-	
-	// Indices into parts slice
-	rootIdx int
-	bootIdx int
-	swapIdx int
 
 	// Mapping: 0=none, then 1 to len(parts)
 	selections map[partitionMappingField]int
@@ -37,9 +32,9 @@ type PartitionMappingModel struct {
 
 func NewPartitionMapping(cfg *config.InstallConfig) PartitionMappingModel {
 	parts, err := installer.ListPartitions(cfg.Disk)
-	
+
 	selections := make(map[partitionMappingField]int)
-	
+
 	// Try to restore from config if possible
 	findPart := func(path string) int {
 		for i, p := range parts {
@@ -52,8 +47,8 @@ func NewPartitionMapping(cfg *config.InstallConfig) PartitionMappingModel {
 
 	selections[pmFieldRoot] = findPart(cfg.MountPoints["/"])
 	selections[pmFieldBoot] = findPart(cfg.MountPoints["/boot/efi"])
-	// Swap is handled separately in config, but we can map it here
-	
+	selections[pmFieldSwap] = findPart(cfg.MountPoints["swap"])
+
 	errMsg := ""
 	if err != nil {
 		errMsg = err.Error()
@@ -116,7 +111,7 @@ func (m PartitionMappingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m PartitionMappingModel) Save() {
 	m.cfg.MountPoints = make(map[string]string)
-	
+
 	getPart := func(field partitionMappingField) string {
 		idx := m.selections[field]
 		if idx > 0 && idx <= len(m.parts) {
@@ -150,7 +145,7 @@ func (m PartitionMappingModel) View() string {
 			cursor = style.StyleSelected.Render("▶ ")
 		}
 		b.WriteString(cursor + style.StyleKey.Render(fmt.Sprintf("%-10s", label)))
-		
+
 		idx := m.selections[field]
 		if idx == 0 {
 			b.WriteString(style.StyleMuted.Render("[ none ]"))
@@ -168,7 +163,7 @@ func (m PartitionMappingModel) View() string {
 	renderField(pmFieldSwap, "Swap")
 
 	b.WriteString("\n")
-	
+
 	confirmCursor := "  "
 	if m.cursor == pmFieldConfirm {
 		confirmCursor = style.StyleSelected.Render("▶ ")

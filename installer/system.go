@@ -1,8 +1,10 @@
 package installer
 
 import (
+	"crypto/rand"
 	"falconia/config"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -12,7 +14,23 @@ func SetTimezone(cfg *config.InstallConfig, log LineHandler) error {
 	if err := RunChrootDry(cfg, log, "ln", "-sf", link, "/etc/localtime"); err != nil {
 		return err
 	}
-	return RunChrootDry(cfg, log, "hwclock", "--systohc")
+	// Write /etc/timezone as a plain-text fallback; the symlink at /etc/localtime
+	// is authoritative on Arch, but some tools (tzdata, Python's zoneinfo module)
+	// read this file when the symlink target is ambiguous.
+	if !cfg.DryRun {
+		if err := writeChroot("/mnt/etc/timezone", cfg.Timezone+"\n"); err != nil {
+			return fmt.Errorf("write /etc/timezone: %w", err)
+		}
+	} else {
+		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/etc/timezone")
+	}
+	// Sync the hardware clock; fall back to the ISA bus method for machines whose
+	// kernel RTC driver is broken or absent (some older or embedded hardware).
+	if err := RunChrootDry(cfg, log, "hwclock", "--systohc"); err != nil {
+		log("Warning: hwclock --systohc failed, retrying via ISA bus...")
+		return RunChrootDry(cfg, log, "hwclock", "--systohc", "--directisa")
+	}
+	return nil
 }
 
 // SetLocale writes /etc/locale.gen and generates locales.
@@ -46,6 +64,63 @@ func SetLocale(cfg *config.InstallConfig, log LineHandler) error {
 		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/etc/vconsole.conf")
 		return nil
 	}
+}
+
+// ConfigureNetwork sets up the Wi-Fi connection for NetworkManager.
+func ConfigureNetwork(cfg *config.InstallConfig, log LineHandler) error {
+	if cfg.NetworkMode != "wifi" || cfg.WifiSSID == "" {
+		return nil // Nothing to configure
+	}
+
+	log("Configuring Wi-Fi for SSID: " + cfg.WifiSSID)
+
+	if cfg.DryRun {
+		log("[DRY RUN] Would write NetworkManager connection profile for " + cfg.WifiSSID)
+		return nil
+	}
+
+	// Create NetworkManager connection profile directory
+	if err := RunSh(log, "mkdir -p /mnt/etc/NetworkManager/system-connections"); err != nil {
+		return err
+	}
+
+	// Write the connection profile
+	profile := fmt.Sprintf(`[connection]
+id=%s
+uuid=%s
+type=wifi
+
+[wifi]
+mode=infrastructure
+ssid=%s
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk=%s
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=default
+method=auto
+`, cfg.WifiSSID, randomUUID(), cfg.WifiSSID, cfg.WifiPass)
+
+	path := fmt.Sprintf("/mnt/etc/NetworkManager/system-connections/%s.nmconnection", cfg.WifiSSID)
+	if err := writeChroot(path, profile); err != nil {
+		return err
+	}
+
+	// Restrict permissions (NetworkManager requires 600)
+	return os.Chmod(path, 0600)
+}
+
+func randomUUID() string {
+	var b [16]byte
+	rand.Read(b[:])
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant bits
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 // SetHostname writes /etc/hostname and /etc/hosts.

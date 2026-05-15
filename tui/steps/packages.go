@@ -7,8 +7,8 @@ import (
 	"falconia/config"
 	"falconia/style"
 
-	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type pkgCategory struct {
@@ -84,17 +84,16 @@ func defaultCategories() []pkgCategory {
 			name: "Services",
 			packages: []pkgEntry{
 				{name: "System Daemons", isHeader: true},
-				{name: "docker.service", desc: "Container orchestration daemon", level: 1},
-				{name: "bluetooth.service", desc: "Bluetooth stack daemon", level: 1},
-				{name: "cups.service", desc: "Common Unix Printing System", level: 1},
+				{name: "docker", desc: "Container orchestration daemon", level: 1},
+				{name: "bluez", desc: "Bluetooth stack daemon", level: 1},
+				{name: "cups", desc: "Common Unix Printing System", level: 1},
 				{name: "Networking Services", isHeader: true},
-				{name: "sshd.service", desc: "OpenSSH server daemon", level: 1},
-				{name: "networkmanager.service", desc: "Network connection manager", level: 1},
-				{name: "tailscale.service", desc: "Zero config VPN", level: 1},
+				{name: "openssh", desc: "OpenSSH server daemon", level: 1},
+				{name: "tailscale", desc: "Zero config VPN", level: 1},
 				{name: "Databases", isHeader: true},
-				{name: "mariadb.service", desc: "MariaDB SQL database server", level: 1},
-				{name: "postgresql.service", desc: "PostgreSQL database server", level: 1},
-				{name: "redis.service", desc: "Advanced key-value store", level: 1},
+				{name: "mariadb", desc: "MariaDB SQL database server", level: 1},
+				{name: "postgresql", desc: "PostgreSQL database server", level: 1},
+				{name: "redis", desc: "Advanced key-value store", level: 1},
 			},
 		},
 		{
@@ -241,7 +240,7 @@ func (m *PackagesModel) moveCursor(delta int) {
 			m.pkgIdx = newIdx
 			break
 		}
-		
+
 		// If we've looped through everything and nothing is visible (shouldn't happen)
 		if newIdx == m.pkgIdx {
 			break
@@ -252,7 +251,7 @@ func (m *PackagesModel) moveCursor(delta int) {
 func (m PackagesModel) isRowVisible(idx int) bool {
 	cat := m.categories[m.catIdx]
 	pkg := cat.packages[idx]
-	
+
 	// Check all parent headers
 	for i := idx - 1; i >= 0; i-- {
 		parent := cat.packages[i]
@@ -295,7 +294,7 @@ func (m PackagesModel) View() string {
 	catWidth := 30
 	for i, cat := range m.categories {
 		sel := "  "
-		catName := cat.name
+		var catName string
 		if i == m.catIdx {
 			if m.focused == 0 {
 				sel = style.StyleSelected.Render("▶ ")
@@ -307,11 +306,11 @@ func (m PackagesModel) View() string {
 		} else {
 			catName = style.StyleMuted.Render(cat.name)
 		}
-		
+
 		line := sel + catName + "\n\n" // Extra spacing
 		catList.WriteString(line)
 	}
-	
+
 	catView := lipgloss.NewStyle().
 		Width(catWidth).
 		MarginRight(4).
@@ -321,7 +320,7 @@ func (m PackagesModel) View() string {
 	// --- Package List (Right) ---
 	var pkgList strings.Builder
 	cat := m.categories[m.catIdx]
-	
+
 	// Top indicator
 	if m.scrollOffset > 0 {
 		pkgList.WriteString(style.StyleMuted.Render("      ↑ more...") + "\n\n")
@@ -343,7 +342,7 @@ func (m PackagesModel) View() string {
 		if i == m.pkgIdx && m.focused == 1 {
 			sel = style.StyleSelected.Render("▶ ")
 		}
-		
+
 		indent := strings.Repeat("  ", pkg.level)
 		if pkg.isHeader {
 			state := "▼"
@@ -366,7 +365,7 @@ func (m PackagesModel) View() string {
 	} else {
 		pkgList.WriteString("\n")
 	}
-	
+
 	pkgView := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder(), false, false, false, true).
 		BorderForeground(lipgloss.Color("#444444")). // Vertical divider

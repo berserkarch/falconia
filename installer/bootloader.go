@@ -2,6 +2,7 @@ package installer
 
 import (
 	"fmt"
+	"os"
 
 	"falconia/config"
 )
@@ -26,6 +27,59 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 		if err := RunChrootDry(cfg, log, "pacman", "-S", "--noconfirm", "efibootmgr"); err != nil {
 			return err
 		}
+	}
+
+	// Configure /etc/default/grub BEFORE grub-install.
+	// This is important because grub-install on Arch reads this file to
+	// decide whether to enable cryptodisk support in the core image.
+
+	// Set GRUB timeout
+	if err := RunChrootDry(
+		cfg,
+		log,
+		"sed", "-i",
+		fmt.Sprintf(`s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=%d/`, cfg.GrubTimeout),
+		"/etc/default/grub",
+	); err != nil {
+		return err
+	}
+
+	if cfg.EncryptDisk {
+		// Enable cryptodisk support
+		if !cfg.DryRun {
+			err := RunChroot(log, "bash", "-c", `grep -q "^#\?GRUB_ENABLE_CRYPTODISK=" /etc/default/grub && sed -i 's/^#\?GRUB_ENABLE_CRYPTODISK=.*/GRUB_ENABLE_CRYPTODISK=y/' /etc/default/grub || echo "GRUB_ENABLE_CRYPTODISK=y" >> /etc/default/grub`)
+			if err != nil {
+				return fmt.Errorf("enable cryptodisk: %w", err)
+			}
+		} else {
+			log(styleGood("[DRY RUN] Would enable GRUB_ENABLE_CRYPTODISK in /etc/default/grub"))
+		}
+
+		var uuid string
+		if !cfg.DryRun {
+			var err error
+			uuid, err = runOutput("blkid", "-s", "UUID", "-o", "value", rootPartition(cfg))
+			if err != nil {
+				return fmt.Errorf("blkid: %w", err)
+			}
+		} else {
+			uuid = "fake-uuid-1234"
+		}
+		// dracut reads rd.luks.uuid/rd.luks.name, NOT cryptdevice= (mkinitcpio syntax).
+		// rd.luks.name maps the UUID to the /dev/mapper/cryptroot name used by root=.
+		cryptParam := fmt.Sprintf(`rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot`, uuid, uuid)
+		if !cfg.DryRun {
+			err := RunChroot(log, "sed", "-i", fmt.Sprintf(`s|^\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"|\1 %s"|`, cryptParam), "/etc/default/grub")
+			if err != nil {
+				return err
+			}
+		} else {
+			log(styleGood("[DRY RUN] Would add rd.luks params to GRUB_CMDLINE_LINUX_DEFAULT"))
+		}
+	}
+
+	// Now run grub-install
+	if cfg.Firmware == "uefi" {
 		if err := RunChrootDry(
 			cfg,
 			log,
@@ -35,6 +89,21 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 			"--bootloader-id=GRUB",
 		); err != nil {
 			return fmt.Errorf("grub-install (UEFI): %w", err)
+		}
+		// Install to the standard removable path (EFI/BOOT/BOOTX64.EFI) as well.
+		// Many UEFI firmware implementations ignore NVRAM boot entries entirely and
+		// only scan the removable fallback path, so this makes the system bootable
+		// on that hardware without any manual NVRAM manipulation.
+		if err := RunChrootDry(
+			cfg,
+			log,
+			"grub-install",
+			"--target=x86_64-efi",
+			"--efi-directory=/boot/efi",
+			"--bootloader-id=GRUB",
+			"--removable",
+		); err != nil {
+			log(fmt.Sprintf("Warning: grub-install removable fallback: %v", err))
 		}
 	} else {
 		if err := RunChrootDry(
@@ -46,17 +115,6 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 		); err != nil {
 			return fmt.Errorf("grub-install (BIOS): %w", err)
 		}
-	}
-
-	// Set GRUB timeout in /etc/default/grub
-	if err := RunChrootDry(
-		cfg,
-		log,
-		"sed", "-i",
-		fmt.Sprintf(`s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=%d/`, cfg.GrubTimeout),
-		"/etc/default/grub",
-	); err != nil {
-		return err
 	}
 
 	return RunChrootDry(cfg, log, "grub-mkconfig", "-o", "/boot/grub/grub.cfg")
@@ -71,6 +129,34 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 		return fmt.Errorf("bootctl install: %w", err)
 	}
 
+	// For systemd-boot, the kernel and initrd must be on the ESP.
+	// We copy them from /boot/ to /boot/efi/
+	if !cfg.DryRun {
+		vmlinuz := fmt.Sprintf("/boot/vmlinuz-%s", cfg.Kernel)
+		initramfs := fmt.Sprintf("/boot/initramfs-%s.img", cfg.Kernel)
+		if err := RunChroot(log, "cp", vmlinuz, "/boot/efi/"); err != nil {
+			return fmt.Errorf("copy kernel to ESP: %w", err)
+		}
+		if err := RunChroot(log, "cp", initramfs, "/boot/efi/"); err != nil {
+			return fmt.Errorf("copy initramfs to ESP: %w", err)
+		}
+		// Copy microcode image to ESP if installed; it must also be on the ESP
+		// for systemd-boot to load it (unlike GRUB, which handles this automatically).
+		if cfg.ExtraServices["microcode"] {
+			for _, pkg := range detectMicrocode() {
+				src := fmt.Sprintf("/boot/%s.img", pkg)
+				if err := RunChroot(log, "cp", src, "/boot/efi/"); err != nil {
+					log(fmt.Sprintf("Warning: could not copy %s to ESP: %v", src, err))
+				}
+			}
+		}
+	} else {
+		log(styleGood("[DRY RUN] Would copy kernel and initramfs to /boot/efi/"))
+		if cfg.ExtraServices["microcode"] {
+			log(styleGood("[DRY RUN] Would copy microcode image to /boot/efi/"))
+		}
+	}
+
 	var uuid string
 	if !cfg.DryRun {
 		var err error
@@ -83,17 +169,37 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 		log(styleGood("[DRY RUN] Would lookup UUID for: ") + rootPartition(cfg))
 	}
 
-	loaderEntry := fmt.Sprintf(
-		"title   BerserkArch\nlinux   /vmlinuz-%s\ninitrd  /initramfs-%s.img\noptions root=UUID=%s rw\n",
-		cfg.Kernel, cfg.Kernel, uuid,
-	)
+	// Build loader entry. Microcode initrd must appear before the main initramfs.
+	loaderEntry := fmt.Sprintf("title   BerserkArch\nlinux   /vmlinuz-%s\n", cfg.Kernel)
+	if cfg.ExtraServices["microcode"] {
+		for _, pkg := range detectMicrocode() {
+			loaderEntry += fmt.Sprintf("initrd  /%s.img\n", pkg)
+		}
+	}
+	loaderEntry += fmt.Sprintf("initrd  /initramfs-%s.img\n", cfg.Kernel)
+
+	var kernelOpts string
+	if cfg.EncryptDisk {
+		kernelOpts = fmt.Sprintf("rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot rw", uuid, uuid)
+	} else {
+		kernelOpts = fmt.Sprintf("root=UUID=%s rw", uuid)
+	}
+	loaderEntry += "options " + kernelOpts + "\n"
 
 	if !cfg.DryRun {
 		if err := writeChroot("/mnt/boot/efi/loader/entries/arch.conf", loaderEntry); err != nil {
 			return err
 		}
+		// Write /etc/kernel/cmdline so future kernel-install invocations (triggered by
+		// kernel package upgrades) generate new boot entries with the correct parameters.
+		// Without this file, updated kernels would boot without LUKS/root params.
+		os.MkdirAll("/mnt/etc/kernel", 0755)
+		if err := writeChroot("/mnt/etc/kernel/cmdline", kernelOpts+"\n"); err != nil {
+			log("Warning: could not write /etc/kernel/cmdline: " + err.Error())
+		}
 	} else {
 		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/boot/efi/loader/entries/arch.conf")
+		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/etc/kernel/cmdline")
 	}
 
 	loaderConf := fmt.Sprintf("default arch\ntimeout %d\nconsole-mode max\neditor no\n", cfg.GrubTimeout)
@@ -108,8 +214,11 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 
 // rootPartition returns the root partition path for UUID lookup.
 func rootPartition(cfg *config.InstallConfig) string {
+	if cfg.PartitionScheme == "manual" {
+		return cfg.MountPoints["/"]
+	}
 	p := partSuffix(cfg.Disk)
-	if cfg.SwapSize > 0 || cfg.Firmware == "uefi" {
+	if cfg.SwapSize > 0 {
 		return cfg.Disk + p + "3"
 	}
 	return cfg.Disk + p + "2"
