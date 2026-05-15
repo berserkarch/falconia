@@ -216,6 +216,24 @@ var ByDE = map[string][]string{
 	},
 }
 
+// ByDriver maps a GPU driver scenario to its packages.
+// "nvidia" = proprietary, "nvidia-open" = open kernel module (Turing+).
+// AMD and Intel drivers ship with the kernel — no extra package needed.
+var ByDriver = map[string][]string{
+	"nvidia":      {"nvidia", "nvidia-utils", "nvidia-settings"},
+	"nvidia-open": {"nvidia-open", "nvidia-utils", "nvidia-settings"},
+	"broadcom":    {"broadcom-wl"},
+	"broadcom-lts": {"broadcom-wl-dkms"},
+}
+
+// ByVM maps a detected virtualisation platform to its guest tool packages.
+var ByVM = map[string][]string{
+	"virtualbox": {"virtualbox-guest-utils"},
+	"vmware":     {"open-vm-tools", "gtkmm3", "xf86-input-vmmouse"},
+	"kvm":        {"qemu-guest-agent", "spice-vdagent"},
+	"qemu":       {"qemu-guest-agent", "spice-vdagent"},
+}
+
 // ByService maps a service/feature key to the packages that back it.
 // Keys match ExtraServices map keys and the EnableX bool fields.
 // Services that need no package (e.g. "trim") are simply absent.

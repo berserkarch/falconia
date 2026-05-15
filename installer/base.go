@@ -28,7 +28,7 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		Add(cfg.Kernel, cfg.Kernel+"-headers").
 		AddMap(data.ByFilesystem, cfg.Filesystem).
 		AddIf(cfg.EncryptDisk, data.Encryption...).
-		AddIf(cfg.ExtraServices["microcode"], detectMicrocode()...).
+		AddMap(data.ByMicrocode, cfg.Hardware.CPU).
 		Build()
 
 	args := append([]string{"/mnt"}, pkgs...)
@@ -136,21 +136,6 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 	return nil
 }
 
-// detectMicrocode returns the appropriate microcode package based on CPU vendor.
-func detectMicrocode() []string {
-	data, err := os.ReadFile("/proc/cpuinfo")
-	if err != nil {
-		return nil
-	}
-	content := string(data)
-	if strings.Contains(content, "GenuineIntel") {
-		return []string{"intel-ucode"}
-	}
-	if strings.Contains(content, "AuthenticAMD") {
-		return []string{"amd-ucode"}
-	}
-	return nil
-}
 
 // GenCrypttab writes /mnt/etc/crypttab for LUKS-encrypted installs.
 // The running system's systemd-cryptsetup-generator reads this file; it is

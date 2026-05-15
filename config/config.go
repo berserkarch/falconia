@@ -1,10 +1,31 @@
 // Package config just contains configs
 package config
 
+// HardwareProfile is populated once at startup by installer.DetectHardware()
+// and never changes after that.  All installer functions read from it.
+type HardwareProfile struct {
+	CPU      string    // "intel" | "amd" | "other"
+	GPUs     []GPUInfo
+	WiFi     string // "broadcom" | "other"
+	VM       string // "virtualbox" | "vmware" | "kvm" | "qemu" | "none"
+	RAMBytes int64  // total physical RAM in bytes
+	HasNVMe  bool
+}
+
+// GPUInfo describes one graphics adapter found on the system.
+type GPUInfo struct {
+	Vendor  string // "nvidia" | "amd" | "intel" | "other"
+	Model   string // human-readable model name from lspci
+	UseOpen bool   // true = install nvidia-open; false = nvidia (proprietary)
+}
+
 // InstallConfig is the single source of truth passed through every step.
 // All Phase 1 steps read from and write to this struct.
 // Phase 2 installer functions take a *InstallConfig and execute accordingly.
 type InstallConfig struct {
+	// --- Hardware (auto-detected at startup, never user-set) ---
+	Hardware HardwareProfile
+
 	// --- System ---
 	Firmware string // "uefi" | "bios"  (auto-detected on startup)
 
