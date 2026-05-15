@@ -86,6 +86,7 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		"berserk-neofetch",
 		"berserk-btweak",
 		"berserk",
+		"eza",
 	}
 
 	// Add filesystem tools
@@ -116,14 +117,23 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		// Generate initramfs with dracut
 		log("Generating initramfs with dracut...")
 
+		confDir := "/mnt/etc/dracut.conf.d"
+		os.MkdirAll(confDir, 0o755)
+
+		// Plymouth must be in dracut modules so the splash screen is embedded in
+		// the initramfs. The theme is set below before dracut runs so the right
+		// theme assets are baked into the image.
+		plymouthConf := "add_dracutmodules+=\" plymouth \"\n"
+		if err := os.WriteFile(confDir+"/plymouth.conf", []byte(plymouthConf), 0o644); err != nil {
+			log(fmt.Sprintf("Warning: write plymouth dracut config: %v", err))
+		}
+
 		// For encrypted installs, ensure dracut includes the crypt module.
 		// For GRUB: also embed the keyfile so the initramfs can open LUKS without a
 		// second prompt (GRUB already prompted once to read the kernel from /boot).
 		// For systemd-boot: the ESP is unencrypted, so embedding the keyfile there
 		// would expose it; the initramfs prompts for the passphrase instead (one prompt).
 		if cfg.EncryptDisk {
-			confDir := "/mnt/etc/dracut.conf.d"
-			os.MkdirAll(confDir, 0o755)
 			encConf := "add_dracutmodules+=\" crypt \"\n"
 			if cfg.Bootloader != "systemd-boot" {
 				encConf += "install_items+=\" /crypto_keyfile.bin \"\n"
@@ -156,6 +166,13 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 					return fmt.Errorf("luksAddKey: %w", err)
 				}
 			}
+		}
+
+		// Set the Plymouth theme before dracut so the correct theme assets are
+		// baked into the initramfs. berserk-plymouth-theme installs the "berserk" theme.
+		log("Setting Plymouth theme...")
+		if err := RunChroot(log, "plymouth-set-default-theme", "berserk"); err != nil {
+			log(fmt.Sprintf("Warning: plymouth-set-default-theme: %v", err))
 		}
 
 		// Find the actual kernel version string from /lib/modules.

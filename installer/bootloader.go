@@ -44,6 +44,18 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 		return err
 	}
 
+	// Add splash to enable Plymouth; quiet suppresses kernel messages during boot.
+	if !cfg.DryRun {
+		err := RunChroot(log, "sed", "-i",
+			`s|^\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"|\1 quiet splash"|`,
+			"/etc/default/grub")
+		if err != nil {
+			log(fmt.Sprintf("Warning: add splash to GRUB cmdline: %v", err))
+		}
+	} else {
+		log(styleGood("[DRY RUN] Would add quiet splash to GRUB_CMDLINE_LINUX_DEFAULT"))
+	}
+
 	if cfg.EncryptDisk {
 		// Enable cryptodisk support
 		if !cfg.DryRun {
@@ -182,9 +194,9 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 	if cfg.EncryptDisk {
 		// No rd.luks.key here: the keyfile is not embedded in the initramfs for
 		// systemd-boot (ESP is unencrypted). The crypt module will prompt once.
-		kernelOpts = fmt.Sprintf("rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot rw", uuid, uuid)
+		kernelOpts = fmt.Sprintf("rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot rw quiet splash", uuid, uuid)
 	} else {
-		kernelOpts = fmt.Sprintf("root=UUID=%s rw", uuid)
+		kernelOpts = fmt.Sprintf("root=UUID=%s rw quiet splash", uuid)
 	}
 	loaderEntry += "options " + kernelOpts + "\n"
 
