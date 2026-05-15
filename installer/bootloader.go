@@ -180,7 +180,9 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 
 	var kernelOpts string
 	if cfg.EncryptDisk {
-		kernelOpts = fmt.Sprintf("rd.luks.uuid=%s rd.luks.name=%s=cryptroot rd.luks.key=/crypto_keyfile.bin root=/dev/mapper/cryptroot rw", uuid, uuid)
+		// No rd.luks.key here: the keyfile is not embedded in the initramfs for
+		// systemd-boot (ESP is unencrypted). The crypt module will prompt once.
+		kernelOpts = fmt.Sprintf("rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot rw", uuid, uuid)
 	} else {
 		kernelOpts = fmt.Sprintf("root=UUID=%s rw", uuid)
 	}
