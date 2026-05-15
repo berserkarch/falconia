@@ -177,9 +177,13 @@ func StyleBlue() lipgloss.Style {
 }
 
 // ToggleOn renders the active choice in an inline toggle.
-// Uses reverse video so it is legible on both true-color and 16-color (TTY) terminals.
+// Background fill keeps it legible on both true-color and 16-color (TTY) terminals.
 func ToggleOn(s string) string {
-	return lipgloss.NewStyle().Reverse(true).Bold(true).Render("[" + s + "]")
+	return lipgloss.NewStyle().
+		Background(colBlue).
+		Foreground(colBase).
+		Bold(true).
+		Render(" " + s + " ")
 }
 
 // ToggleOff renders an inactive choice in an inline toggle.
