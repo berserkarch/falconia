@@ -1,3 +1,4 @@
+// Package config just contains configs
 package config
 
 // InstallConfig is the single source of truth passed through every step.
@@ -120,11 +121,15 @@ func DEPackages(de string) []string {
 	case "xfce":
 		return []string{"xfce4", "xfce4-goodies", "lightdm", "lightdm-gtk-greeter"}
 	case "hyprland":
-		return []string{"hyprland", "xdg-desktop-portal-hyprland", "waybar", "sddm",
-			"kitty", "wofi", "mako", "polkit-kde-agent"}
+		return []string{
+			"hyprland", "xdg-desktop-portal-hyprland", "waybar", "sddm",
+			"kitty", "wofi", "mako", "polkit-kde-agent",
+		}
 	case "i3":
-		return []string{"i3-wm", "i3status", "i3lock", "dmenu", "sddm",
-			"xorg", "xterm", "picom", "nitrogen"}
+		return []string{
+			"i3-wm", "i3status", "i3lock", "dmenu", "sddm",
+			"xorg", "xterm", "picom", "nitrogen",
+		}
 	default:
 		return nil
 	}

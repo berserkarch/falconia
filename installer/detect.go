@@ -35,6 +35,7 @@ func listDisksFallback() ([]DiskInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("lsblk: %w", err)
 	}
+	liveISO := liveIsoDisk()
 	var disks []DiskInfo
 	scanner := bufio.NewScanner(strings.NewReader(string(out)))
 	for scanner.Scan() {
@@ -43,6 +44,9 @@ func listDisksFallback() ([]DiskInfo, error) {
 			continue
 		}
 		path := fields[0]
+		if liveISO != "" && path == liveISO {
+			continue
+		}
 		size := ""
 		model := ""
 		if len(fields) >= 2 {
@@ -61,6 +65,33 @@ func listDisksFallback() ([]DiskInfo, error) {
 		return nil, fmt.Errorf("no block devices found")
 	}
 	return disks, nil
+}
+
+// liveIsoDisk returns the parent disk path of the Arch ISO boot medium by
+// reading /proc/mounts for the /run/archiso/bootmnt mount point.
+// Returns "" if the mount point isn't found or the parent can't be determined.
+func liveIsoDisk() string {
+	data, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[1] != "/run/archiso/bootmnt" {
+			continue
+		}
+		// fields[0] is e.g. /dev/sda1 — get the parent disk name via lsblk
+		out, err := exec.Command("lsblk", "-n", "-o", "PKNAME", fields[0]).Output()
+		if err != nil {
+			return ""
+		}
+		pkname := strings.TrimSpace(string(out))
+		if pkname == "" {
+			return ""
+		}
+		return "/dev/" + pkname
+	}
+	return ""
 }
 
 // CheckInternet returns nil if an internet connection is detected.

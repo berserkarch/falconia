@@ -1,13 +1,15 @@
+// Package installer containers installer code
 package installer
 
 import (
 	"bufio"
-	"falconia/config"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
+
+	"falconia/config"
 )
 
 // LineHandler is called for each line of combined stdout+stderr from a command.
