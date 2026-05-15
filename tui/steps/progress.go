@@ -351,7 +351,7 @@ func (m ProgressModel) viewRunning() string {
 		pct = float64(m.current) / float64(len(m.steps))
 	}
 	b.WriteString(style.ProgressBar(60, pct) +
-		style.StyleMuted.Render(fmt.Sprintf("  %d%%\n\n\n", int(pct*100))))
+		style.StyleMuted.Render(fmt.Sprintf("  %d%%", int(pct*100))) + "\n\n")
 
 	if len(m.logLines) > 0 {
 		b.WriteString(m.viewport.View() + "\n\n")
