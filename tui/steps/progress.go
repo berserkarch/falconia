@@ -316,7 +316,7 @@ func (m ProgressModel) viewRunning() string {
 	}
 
 	if start > 0 {
-		b.WriteString(style.StyleMuted.Render(fmt.Sprintf("  ↑ %d completed\n", start)))
+		b.WriteString(style.StyleMuted.Render(fmt.Sprintf("  ↑ %d completed", start)) + "\n")
 	}
 
 	for i := start; i < end; i++ {
@@ -341,7 +341,7 @@ func (m ProgressModel) viewRunning() string {
 	}
 
 	if end < len(m.steps) {
-		b.WriteString(style.StyleMuted.Render(fmt.Sprintf("  ↓ %d pending\n", len(m.steps)-end)))
+		b.WriteString(style.StyleMuted.Render(fmt.Sprintf("  ↓ %d pending", len(m.steps)-end)) + "\n")
 	}
 
 	b.WriteString("\n")
