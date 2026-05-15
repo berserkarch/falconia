@@ -105,7 +105,7 @@ func DEDisplayManager(de string) string {
 	case "kde", "hyprland", "i3":
 		return "sddm"
 	case "xfce":
-		return "lightdm"
+		return "sddm"
 	default:
 		return ""
 	}
@@ -117,7 +117,7 @@ func DEPackages(de string) []string {
 	case "gnome":
 		return []string{"gnome", "gnome-extra", "gdm"}
 	case "kde":
-		return []string{"plasma", "plasma-wayland-session", "kde-applications", "sddm"}
+		return []string{"plasma", "plasma-desktop", "plasma-meta", "sddm", "berserk-user-config", "berserk-config-kde"}
 	case "xfce":
 		return []string{"xfce4", "xfce4-goodies", "lightdm", "lightdm-gtk-greeter"}
 	case "hyprland":

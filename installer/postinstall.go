@@ -1,9 +1,10 @@
 package installer
 
 import (
-	"falconia/config"
 	"os"
 	"path/filepath"
+
+	"falconia/config"
 )
 
 // InstallDesktop installs the chosen DE and its display manager.
@@ -72,7 +73,7 @@ func InstallPackages(cfg *config.InstallConfig, log LineHandler) error {
 
 // EnableServices enables systemd services based on config flags.
 func EnableServices(cfg *config.InstallConfig, log LineHandler) error {
-	services := []string{"NetworkManager"} // always
+	services := []string{"NetworkManager", "sddm"} // always
 
 	if cfg.EnableBluetooth {
 		services = append(services, "bluetooth")
@@ -130,9 +131,9 @@ func EnableServices(cfg *config.InstallConfig, log LineHandler) error {
 		if !cfg.DryRun {
 			confPath := "/mnt/etc/systemd/zram-generator.conf"
 			confDir := filepath.Dir(confPath)
-			os.MkdirAll(confDir, 0755)
+			os.MkdirAll(confDir, 0o755)
 			confData := []byte("[zram0]\nzram-size = ram / 2\ncompression-algorithm = zstd\nswap-priority = 100\n")
-			if err := os.WriteFile(confPath, confData, 0644); err != nil {
+			if err := os.WriteFile(confPath, confData, 0o644); err != nil {
 				log("Warning: Failed to write zram-generator.conf")
 			}
 		} else {
