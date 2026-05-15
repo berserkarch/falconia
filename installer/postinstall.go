@@ -12,7 +12,10 @@ func InstallDesktop(cfg *config.InstallConfig, log LineHandler) error {
 		return nil
 	}
 
-	pkgs := data.New().AddMap(data.ByDE, cfg.DesktopEnv).Build()
+	pkgs := data.New().
+		Add(data.CommonDE...).
+		AddMap(data.ByDE, cfg.DesktopEnv).
+		Build()
 	if len(pkgs) == 0 {
 		return nil
 	}

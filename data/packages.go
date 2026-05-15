@@ -139,6 +139,36 @@ var ByMicrocode = map[string][]string{
 	"amd":   {"amd-ucode"},
 }
 
+// CommonDE is installed for any desktop environment or window manager selection.
+// These are the shared foundation — xorg, audio, kitty, and desktop integration
+// essentials that every DE/WM expects to be present.
+var CommonDE = []string{
+	// Unified terminal across all DEs
+	"kitty",
+	// X11 base (used directly by X11 DEs; Wayland DEs use it via XWayland)
+	"xorg-server",
+	"xorg-xinit",
+	"xorg-xrandr",
+	"xorg-xdpyinfo",
+	"xorg-xinput",
+	"xorg-xkill",
+	"xf86-input-libinput",
+	// Open-source GPU rendering
+	"mesa",
+	"libva-mesa-driver",
+	// Audio (PipeWire replaces PulseAudio/JACK)
+	"pipewire",
+	"pipewire-pulse",
+	"pipewire-alsa",
+	"pipewire-jack",
+	"wireplumber",
+	// Desktop integration
+	"xdg-user-dirs",
+	"xdg-utils",
+	"polkit",
+	"gvfs",
+}
+
 // ByDE maps a desktop environment name to its pacman packages.
 // Package lists sourced from the BerserkArch Calamares packagechooser.conf.
 var ByDE = map[string][]string{
@@ -234,19 +264,3 @@ var ByVM = map[string][]string{
 	"qemu":       {"qemu-guest-agent", "spice-vdagent"},
 }
 
-// ByService maps a service/feature key to the packages that back it.
-// Keys match ExtraServices map keys and the EnableX bool fields.
-// Services that need no package (e.g. "trim") are simply absent.
-var ByService = map[string][]string{
-	"bluetooth": {"bluez", "bluez-utils"},
-	"cups":      {"cups"},
-	"ssh":       {"openssh"},
-	"docker":    {"docker"},
-	"tailscale": {"tailscale"},
-	"avahi":     {"avahi"},
-	"tlp":       {"tlp"},
-	"ufw":       {"ufw"},
-	"flatpak":   {"flatpak"},
-	"snap":      {"snapd"},
-	"zram":      {"zram-generator"},
-}
