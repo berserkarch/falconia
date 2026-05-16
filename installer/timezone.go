@@ -7,6 +7,8 @@ import (
 )
 
 // ListTimezones returns a list of system timezones.
+// posix/ and right/ subtrees are skipped — they contain duplicates of the
+// top-level zones under alternate naming conventions.
 func ListTimezones() []string {
 	var zones []string
 	root := "/usr/share/zoneinfo"
@@ -18,15 +20,12 @@ func ListTimezones() []string {
 
 		rel, _ := filepath.Rel(root, path)
 
-		// Filter out internal/legacy paths
-		if strings.HasPrefix(rel, "posix/") || strings.HasPrefix(rel, "right/") || strings.HasPrefix(rel, "Etc/") {
-			// Actually keep Etc/ for UTC etc
-		} else if strings.Count(rel, "/") == 0 {
-			// Skip top-level files like "EST", "GMT" if we want strictly Region/City
-			// But some like "UTC" are useful. Let's keep them if they are common.
+		// Skip POSIX/right duplicate trees
+		if strings.HasPrefix(rel, "posix/") || strings.HasPrefix(rel, "right/") {
+			return nil
 		}
 
-		// Basic filter for Region/City
+		// Keep Region/City and a few useful top-level zones
 		if strings.Contains(rel, "/") {
 			zones = append(zones, rel)
 		} else if rel == "UTC" {

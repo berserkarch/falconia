@@ -38,9 +38,14 @@ func SidebarView(cfg *config.InstallConfig, step, total int, advanced bool) stri
 	if cfg.Disk != "" {
 		row("Scheme", cfg.PartitionScheme)
 		row("FS", cfg.Filesystem)
-		if cfg.SwapSize > 0 {
-			row("Swap", fmt.Sprintf("%d MiB", cfg.SwapSize))
-		} else {
+		switch cfg.SwapMode {
+		case "partition":
+			row("Swap", fmt.Sprintf("partition (%d MiB)", cfg.SwapSize))
+		case "file":
+			row("Swap", fmt.Sprintf("file (%d MiB)", cfg.SwapSize))
+		case "suspend":
+			row("Swap", "file (auto, hibernate)")
+		default:
 			row("Swap", "none")
 		}
 	}
@@ -86,11 +91,7 @@ func SidebarView(cfg *config.InstallConfig, step, total int, advanced bool) stri
 
 	// Software
 	row("Kernel", cfg.Kernel)
-	de := cfg.DesktopEnv
-	if de == "" {
-		de = ""
-	}
-	row("Desktop", de)
+	row("Desktop", cfg.DesktopEnv)
 	row("Bootloader", cfg.Bootloader)
 
 	b.WriteString("\n")

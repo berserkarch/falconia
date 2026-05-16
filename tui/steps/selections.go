@@ -153,7 +153,6 @@ func (m DesktopModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", " ":
 			opt := m.options[m.cursor]
 			m.cfg.DesktopEnv = opt.value
-			m.cfg.DisplayManager = config.DEDisplayManager(opt.value)
 			return m, EmitDone()
 		}
 	}

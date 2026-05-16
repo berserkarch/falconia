@@ -74,9 +74,14 @@ func (m ConfirmModel) View() string {
 		row("Encryption", "Disabled")
 	}
 
-	if cfg.SwapSize > 0 {
-		row("Swap", fmt.Sprintf("%d MiB", cfg.SwapSize))
-	} else {
+	switch cfg.SwapMode {
+	case "partition":
+		row("Swap", fmt.Sprintf("partition (%d MiB)", cfg.SwapSize))
+	case "file":
+		row("Swap", fmt.Sprintf("file (%d MiB)", cfg.SwapSize))
+	case "suspend":
+		row("Swap", "file (auto, hibernate)")
+	default:
 		row("Swap", "none")
 	}
 	b.WriteString("\n")

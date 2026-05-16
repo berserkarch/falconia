@@ -99,16 +99,19 @@ func (m NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "left", "h":
-			m.modeIdx = (m.modeIdx - 1 + len(netModes)) % len(netModes)
-			m.cursor = netMode
-			m.updateFocus()
-			return m, nil
+			// Only cycle modes when on the mode row; otherwise let the keystroke
+			// reach the focused text input so the user can type 'h' / move the
+			// in-input cursor.
+			if m.cursor == netMode {
+				m.modeIdx = (m.modeIdx - 1 + len(netModes)) % len(netModes)
+				return m, nil
+			}
 
 		case "right", "l":
-			m.modeIdx = (m.modeIdx + 1) % len(netModes)
-			m.cursor = netMode
-			m.updateFocus()
-			return m, nil
+			if m.cursor == netMode {
+				m.modeIdx = (m.modeIdx + 1) % len(netModes)
+				return m, nil
+			}
 
 		case "enter":
 			mode := netModes[m.modeIdx]

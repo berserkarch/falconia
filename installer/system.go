@@ -159,17 +159,44 @@ func SetRootPassword(cfg *config.InstallConfig, log LineHandler) error {
 	return runWithStdin(log, input, "arch-chroot", "/mnt", "passwd")
 }
 
+// existingGroups returns the set of group names present in /mnt/etc/group.
+func existingGroups() map[string]struct{} {
+	data, err := os.ReadFile("/mnt/etc/group")
+	if err != nil {
+		return nil
+	}
+	groups := make(map[string]struct{})
+	for _, line := range strings.Split(string(data), "\n") {
+		if name, _, found := strings.Cut(line, ":"); found {
+			groups[name] = struct{}{}
+		}
+	}
+	return groups
+}
+
 // CreateUsers creates all non-root users defined in config.
 func CreateUsers(cfg *config.InstallConfig, log LineHandler) error {
+	known := existingGroups()
+
 	for _, u := range cfg.Users {
-		groups := strings.Join(u.Groups, ",")
-		if err := RunChrootDry(cfg, log,
-			"useradd",
-			"-m",
-			"-G", groups,
-			"-s", u.Shell,
-			u.Username,
-		); err != nil {
+		var filtered []string
+		for _, g := range u.Groups {
+			if known == nil {
+				filtered = append(filtered, g)
+				continue
+			}
+			if _, ok := known[g]; ok {
+				filtered = append(filtered, g)
+			} else {
+				log(styleGood("[INFO] ") + "skipping group '" + g + "' — not present in chroot")
+			}
+		}
+		args := []string{"-m", "-s", u.Shell}
+		if len(filtered) > 0 {
+			args = append(args, "-G", strings.Join(filtered, ","))
+		}
+		args = append(args, u.Username)
+		if err := RunChrootDry(cfg, log, "useradd", args...); err != nil {
 			return fmt.Errorf("useradd %s: %w", u.Username, err)
 		}
 

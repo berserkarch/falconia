@@ -113,15 +113,17 @@ func extractPCIDeviceID(line, vendor string) string {
 	return rest[:end]
 }
 
-// detectWiFi returns "broadcom" if a Broadcom (vendor 14e4) network adapter
-// is found via lspci, "other" otherwise.
+// detectWiFi returns "broadcom" if a Broadcom wireless adapter is found via
+// lspci, "other" otherwise. We check for PCI class [0280] (Network controller)
+// to avoid false-positives from Broadcom Ethernet adapters (class [0200])
+// which share the same vendor ID (14e4) but use in-tree drivers, not broadcom-wl.
 func detectWiFi() string {
 	out, err := exec.Command("lspci", "-nn").Output()
 	if err != nil {
 		return "other"
 	}
 	for _, line := range strings.Split(string(out), "\n") {
-		if strings.Contains(line, "[14e4:") {
+		if strings.Contains(line, "[14e4:") && strings.Contains(line, "[0280]") {
 			return "broadcom"
 		}
 	}

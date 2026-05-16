@@ -1,6 +1,10 @@
 package style
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Colour palette
 var (
@@ -139,15 +143,47 @@ var (
 				Padding(0, 1)
 )
 
-// PlaceOverlay centers a foreground box over a background view of given total dimensions.
+// PlaceOverlay centers fg over bg. Rows occupied by fg are replaced (with
+// blank-space padding to the left of fg); rows above and below show bg
+// untouched. We do not slice into bg bytes because bg contains ANSI escape
+// sequences — byte-level slicing would cut inside an escape and produce
+// broken colour output.
 func PlaceOverlay(width, height int, fg, bg string) string {
-	return lipgloss.Place(
-		width, height,
-		lipgloss.Center, lipgloss.Center,
-		fg,
-		lipgloss.WithWhitespaceChars(" "),
-		lipgloss.WithWhitespaceForeground(colBase),
-	)
+	fgLines := strings.Split(fg, "\n")
+	bgLines := strings.Split(bg, "\n")
+
+	fgH := len(fgLines)
+	fgW := 0
+	for _, l := range fgLines {
+		if w := lipgloss.Width(l); w > fgW {
+			fgW = w
+		}
+	}
+
+	topPad := (height - fgH) / 2
+	if topPad < 0 {
+		topPad = 0
+	}
+	leftPad := (width - fgW) / 2
+	if leftPad < 0 {
+		leftPad = 0
+	}
+	leftSpace := strings.Repeat(" ", leftPad)
+
+	out := make([]string, 0, height)
+	for i := 0; i < height; i++ {
+		fi := i - topPad
+		if fi >= 0 && fi < len(fgLines) {
+			out = append(out, leftSpace+fgLines[fi])
+			continue
+		}
+		if i < len(bgLines) {
+			out = append(out, bgLines[i])
+		} else {
+			out = append(out, "")
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // Checkbox renders a ✓ or ○ with colour.

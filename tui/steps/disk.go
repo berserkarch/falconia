@@ -22,9 +22,12 @@ const (
 	diskFieldEncrypt
 	diskFieldEncPass
 	diskFieldEncConf
-	diskFieldSwap
+	diskFieldSwapMode
+	diskFieldSwapSize // advanced only; hidden for none/suspend modes
 	diskFieldCount
 )
+
+var swapModes = []string{"none", "partition", "file", "suspend"}
 
 // DiskModel handles disk selection, partition scheme, filesystem, and swap.
 type DiskModel struct {
@@ -34,14 +37,15 @@ type DiskModel struct {
 	disks   []installer.DiskInfo
 	diskErr string
 
-	cursor    diskField
-	diskIdx   int // index into disks slice
-	schemeIdx int // 0=guided, 1=manual
-	fsIdx     int // 0=ext4, 1=btrfs, 2=xfs
-	encrypt   bool
-	swapInput textinput.Model
-	passInput textinput.Model
-	confInput textinput.Model
+	cursor      diskField
+	diskIdx     int // index into disks slice
+	schemeIdx   int // 0=guided, 1=manual
+	fsIdx       int // 0=ext4, 1=btrfs, 2=xfs
+	encrypt     bool
+	swapModeIdx int // index into swapModes
+	swapInput   textinput.Model
+	passInput   textinput.Model
+	confInput   textinput.Model
 
 	err string
 }
@@ -53,7 +57,9 @@ func NewDisk(cfg *config.InstallConfig, advanced bool) DiskModel {
 	ti.Placeholder = "4096"
 	ti.CharLimit = 8
 	ti.Width = 15
-	ti.SetValue(strconv.Itoa(cfg.SwapSize))
+	if cfg.SwapSize > 0 {
+		ti.SetValue(strconv.Itoa(cfg.SwapSize))
+	}
 
 	pi := textinput.New()
 	pi.Placeholder = "Encryption Password"
@@ -97,18 +103,27 @@ func NewDisk(cfg *config.InstallConfig, advanced bool) DiskModel {
 		schemeIdx = 1
 	}
 
+	swapModeIdx := 1 // default: partition
+	for i, m := range swapModes {
+		if m == cfg.SwapMode {
+			swapModeIdx = i
+			break
+		}
+	}
+
 	return DiskModel{
-		cfg:       cfg,
-		advanced:  advanced,
-		disks:     disks,
-		diskErr:   diskErr,
-		diskIdx:   diskIdx,
-		schemeIdx: schemeIdx,
-		fsIdx:     fsIdx,
-		encrypt:   cfg.EncryptDisk,
-		swapInput: ti,
-		passInput: pi,
-		confInput: ci,
+		cfg:         cfg,
+		advanced:    advanced,
+		disks:       disks,
+		diskErr:     diskErr,
+		diskIdx:     diskIdx,
+		schemeIdx:   schemeIdx,
+		fsIdx:       fsIdx,
+		encrypt:     cfg.EncryptDisk,
+		swapModeIdx: swapModeIdx,
+		swapInput:   ti,
+		passInput:   pi,
+		confInput:   ci,
 	}
 }
 
@@ -122,62 +137,18 @@ func (m DiskModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, EmitBack()
 
 		case "up", "k", "shift+tab":
-			if (msg.String() == "k") && (m.cursor == diskFieldSwap || m.cursor == diskFieldEncPass || m.cursor == diskFieldEncConf) {
+			if msg.String() == "k" && m.isTextInput() {
 				break
 			}
-			max := diskFieldEncPass
-			if m.encrypt {
-				max = diskFieldEncConf
-			}
-			if m.advanced {
-				max = diskFieldCount - 1
-			}
-
-			if m.cursor > 0 {
-				m.cursor--
-			} else {
-				m.cursor = max
-			}
-
-			// skip encryption pass/conf if not encrypting
-			if !m.encrypt {
-				if m.cursor == diskFieldEncConf || m.cursor == diskFieldEncPass {
-					m.cursor = diskFieldEncrypt
-				}
-			}
-
+			m.cursor = m.prevField()
 			m.updateFocus()
 			return m, nil
 
 		case "down", "j", "tab":
-			if (msg.String() == "j") && (m.cursor == diskFieldSwap || m.cursor == diskFieldEncPass || m.cursor == diskFieldEncConf) {
+			if msg.String() == "j" && m.isTextInput() {
 				break
 			}
-			max := diskFieldEncrypt
-			if m.encrypt {
-				max = diskFieldEncConf
-			}
-			if m.advanced {
-				max = diskFieldCount - 1
-			}
-
-			if m.cursor < max {
-				m.cursor++
-			} else {
-				m.cursor = 0
-			}
-
-			// skip encryption pass/conf if not encrypting
-			if !m.encrypt {
-				if m.cursor == diskFieldEncPass || m.cursor == diskFieldEncConf {
-					if m.advanced {
-						m.cursor = diskFieldSwap
-					} else {
-						m.cursor = 0
-					}
-				}
-			}
-
+			m.cursor = m.nextField()
 			m.updateFocus()
 			return m, nil
 
@@ -187,37 +158,12 @@ func (m DiskModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cycleRight()
 
 		case "enter":
-			// If we're on a field, Enter should ideally move to the next field
-			// unless it's the last field of the step.
-			lastField := diskFieldEncrypt
-			if m.encrypt {
-				lastField = diskFieldEncConf
-			}
-			if m.advanced {
-				lastField = diskFieldCount - 1
-			}
-
-			if m.cursor != lastField {
-				// Move to next field
-				m.cursor++
-				// Skip fields if necessary (logic copied from "down")
-				if !m.encrypt {
-					if m.cursor == diskFieldEncPass || m.cursor == diskFieldEncConf {
-						if m.advanced {
-							m.cursor = diskFieldSwap
-						} else {
-							m.cursor = 0
-						}
-					}
-				}
-				if m.cursor >= diskFieldCount {
-					m.cursor = 0
-				}
+			if m.cursor != m.lastField() {
+				m.cursor = m.nextField()
 				m.updateFocus()
 				return m, nil
 			}
-
-			// On last field: validate and submit
+			// On last field — validate and submit.
 			if err := m.validate(); err != "" {
 				m.err = err
 				return m, nil
@@ -231,7 +177,7 @@ func (m DiskModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// delegate input keystrokes
 		var cmd tea.Cmd
-		if m.cursor == diskFieldSwap {
+		if m.cursor == diskFieldSwapSize {
 			m.swapInput, cmd = m.swapInput.Update(msg)
 			return m, cmd
 		}
@@ -252,13 +198,70 @@ func (m *DiskModel) updateFocus() {
 	m.passInput.Blur()
 	m.confInput.Blur()
 	switch m.cursor {
-	case diskFieldSwap:
+	case diskFieldSwapSize:
 		m.swapInput.Focus()
 	case diskFieldEncPass:
 		m.passInput.Focus()
 	case diskFieldEncConf:
 		m.confInput.Focus()
 	}
+}
+
+// isTextInput reports whether the cursor is on a free-text input field.
+func (m DiskModel) isTextInput() bool {
+	return m.cursor == diskFieldSwapSize ||
+		m.cursor == diskFieldEncPass ||
+		m.cursor == diskFieldEncConf
+}
+
+// swapSizeVisible reports whether the swap size input should be shown.
+func (m DiskModel) swapSizeVisible() bool {
+	mode := swapModes[m.swapModeIdx]
+	return m.advanced && (mode == "partition" || mode == "file")
+}
+
+// lastField returns the last navigable field given current state.
+func (m DiskModel) lastField() diskField {
+	if m.swapSizeVisible() {
+		return diskFieldSwapSize
+	}
+	return diskFieldSwapMode
+}
+
+// nextField returns the field after the current one, wrapping to 0.
+func (m DiskModel) nextField() diskField {
+	last := m.lastField()
+	if m.cursor >= last {
+		return 0
+	}
+	next := m.cursor + 1
+	// skip enc pass/conf when not encrypting
+	if !m.encrypt && (next == diskFieldEncPass || next == diskFieldEncConf) {
+		next = diskFieldSwapMode
+	}
+	// skip swapSize when not visible
+	if next == diskFieldSwapSize && !m.swapSizeVisible() {
+		return 0
+	}
+	return next
+}
+
+// prevField returns the field before the current one, wrapping to lastField.
+func (m DiskModel) prevField() diskField {
+	last := m.lastField()
+	if m.cursor == 0 {
+		return last
+	}
+	prev := m.cursor - 1
+	// skip enc pass/conf when not encrypting
+	if !m.encrypt && (prev == diskFieldEncConf || prev == diskFieldEncPass) {
+		prev = diskFieldEncrypt
+	}
+	// skip swapSize when not visible
+	if prev == diskFieldSwapSize && !m.swapSizeVisible() {
+		prev = diskFieldSwapMode
+	}
+	return prev
 }
 
 func (m *DiskModel) cycleLeft() {
@@ -273,6 +276,8 @@ func (m *DiskModel) cycleLeft() {
 		m.fsIdx = (m.fsIdx - 1 + len(fsOptions)) % len(fsOptions)
 	case diskFieldEncrypt:
 		m.encrypt = !m.encrypt
+	case diskFieldSwapMode:
+		m.swapModeIdx = (m.swapModeIdx - 1 + len(swapModes)) % len(swapModes)
 	}
 }
 
@@ -288,6 +293,8 @@ func (m *DiskModel) cycleRight() {
 		m.fsIdx = (m.fsIdx + 1) % len(fsOptions)
 	case diskFieldEncrypt:
 		m.encrypt = !m.encrypt
+	case diskFieldSwapMode:
+		m.swapModeIdx = (m.swapModeIdx + 1) % len(swapModes)
 	}
 }
 
@@ -307,11 +314,15 @@ func (m DiskModel) validate() string {
 		}
 	}
 
-	if m.advanced {
+	if m.swapSizeVisible() {
 		v := strings.TrimSpace(m.swapInput.Value())
 		if v != "" {
-			if _, err := strconv.Atoi(v); err != nil {
+			n, err := strconv.Atoi(v)
+			if err != nil {
 				return "Swap size must be a number (MiB)"
+			}
+			if n <= 0 {
+				return "Swap size must be greater than 0 MiB"
 			}
 		}
 	}
@@ -339,10 +350,11 @@ func (m DiskModel) Save() {
 		m.cfg.EncryptionPass = ""
 	}
 
-	if m.advanced {
+	m.cfg.SwapMode = swapModes[m.swapModeIdx]
+	if m.swapSizeVisible() {
 		v := strings.TrimSpace(m.swapInput.Value())
 		if v == "" {
-			m.cfg.SwapSize = 0
+			m.cfg.SwapSize = 4096
 		} else {
 			n, _ := strconv.Atoi(v)
 			m.cfg.SwapSize = n
@@ -437,13 +449,29 @@ func (m DiskModel) View() string {
 		b.WriteString("\n")
 	}
 
-	// --- Advanced fields ---
-	if m.advanced {
-		b.WriteString(cursor(diskFieldSwap))
+	// --- Swap mode ---
+	b.WriteString(cursor(diskFieldSwapMode))
+	b.WriteString(style.StyleKey.Render("Swap   "))
+	b.WriteString(" ")
+	for i, s := range swapModes {
+		if i == m.swapModeIdx {
+			b.WriteString(style.ToggleOn(s))
+		} else {
+			b.WriteString(style.ToggleOff(s))
+		}
+		b.WriteString("  ")
+	}
+	if swapModes[m.swapModeIdx] == "suspend" {
+		b.WriteString(style.StyleMuted.Render("(auto-sized to RAM)"))
+	}
+	b.WriteString("\n")
+
+	// --- Swap size (advanced, partition/file only) ---
+	if m.swapSizeVisible() {
+		b.WriteString(cursor(diskFieldSwapSize))
 		b.WriteString(style.StyleKey.Render("Swap MiB"))
 		b.WriteString(" ")
 		b.WriteString(m.swapInput.View())
-		b.WriteString(style.StyleMuted.Render(" (0 = none)"))
 		b.WriteString("\n")
 	}
 
