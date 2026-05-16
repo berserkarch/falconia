@@ -114,13 +114,13 @@ type DesktopModel struct {
 func NewDesktop(cfg *config.InstallConfig) DesktopModel {
 	options := []desktopOption{
 		{"none", "None (minimal)", "No desktop — TTY only", 0},
-		{"gnome", "GNOME", "Full GNOME desktop + GDM", 800},
-		{"kde", "KDE Plasma", "Full Plasma desktop + SDDM", 700},
-		{"xfce", "XFCE", "Lightweight desktop + LightDM", 250},
-		// {"cinnamon", "Cinnamon", "Traditional desktop + LightDM", 400},
-		{"hyprland", "Hyprland", "Wayland compositor + SDDM + waybar", 180},
 		{"i3", "i3", "Tiling window manager + SDDM + xorg", 120},
 		{"openbox", "Openbox", "Stacking window manager + SDDM", 160},
+		{"xfce", "XFCE", "Lightweight desktop + LightDM", 250},
+		{"kde", "KDE Plasma", "Full Plasma desktop + SDDM", 700},
+		{"gnome", "GNOME", "Full GNOME desktop + GDM", 800},
+		{"hyprland", "Hyprland", "Wayland compositor + SDDM + waybar", 180},
+		// {"cinnamon", "Cinnamon", "Traditional desktop + LightDM", 400},
 	}
 	cursor := 0
 	for i, o := range options {

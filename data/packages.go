@@ -295,8 +295,7 @@ var ByDE = map[string][]string{
 		"xfce4-pulseaudio-plugin", "xfce4-screensaver",
 		"xfce4-screenshooter", "xfce4-taskmanager", "xfce4-wavelan-plugin",
 		"xfce4-weather-plugin", "xfce4-whiskermenu-plugin",
-		"xfce4-xkb-plugin",
-		"berserk-sddm-theme", "berserk-config-xfce",
+		"xfce4-xkb-plugin", "berserk-sddm-theme", "berserk-config-xfce",
 	},
 	// "cinnamon": {
 	// 	"cinnamon", "cinnamon-translations", "file-roller", "galculator",
@@ -312,8 +311,7 @@ var ByDE = map[string][]string{
 		"xdg-desktop-portal-gtk", "xdg-desktop-portal-hyprland",
 		"plasma-integration", "hyprland-qt-support", "hyprqt6engine",
 		"hyprpolkitagent", "cliphist", "dunst", "nwg-look",
-		"xdg-user-dirs-gtk",
-		"berserk-sddm-theme", "berserk-user-config",
+		"xdg-user-dirs-gtk", "berserk-sddm-theme", "berserk-user-config",
 		"berserk-config-kde", "berserk-config-hyprland",
 	},
 	"i3": {
