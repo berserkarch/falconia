@@ -43,3 +43,21 @@ var Disable = []string{
 	"bluetooth",   // off by default; user enables manually post-install if needed
 	"pacman-init", // live-ISO only, must not run on installed system
 }
+
+// DefaultUserGroups are added to every non-root user created by the installer.
+// wheel is prepended separately when the user opts into sudo.
+var DefaultUserGroups = []string{
+	"audio",
+	"video",
+	"storage",
+	"input",
+	"sys",
+	"rfkill",
+	"docker",
+	"wireshark",
+	"uucp",
+	"tty",
+	"plugdev",
+	"libvirt",
+	"kvm",
+}
