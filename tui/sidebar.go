@@ -86,11 +86,7 @@ func SidebarView(cfg *config.InstallConfig, step, total int, advanced bool) stri
 
 	// Software
 	row("Kernel", cfg.Kernel)
-	de := cfg.DesktopEnv
-	if de == "" {
-		de = ""
-	}
-	row("Desktop", de)
+	row("Desktop", cfg.DesktopEnv)
 	row("Bootloader", cfg.Bootloader)
 
 	b.WriteString("\n")

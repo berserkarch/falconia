@@ -191,14 +191,12 @@ func CreateUsers(cfg *config.InstallConfig, log LineHandler) error {
 				log(styleGood("[INFO] ") + "skipping group '" + g + "' — not present in chroot")
 			}
 		}
-		groups := strings.Join(filtered, ",")
-		if err := RunChrootDry(cfg, log,
-			"useradd",
-			"-m",
-			"-G", groups,
-			"-s", u.Shell,
-			u.Username,
-		); err != nil {
+		args := []string{"-m", "-s", u.Shell}
+		if len(filtered) > 0 {
+			args = append(args, "-G", strings.Join(filtered, ","))
+		}
+		args = append(args, u.Username)
+		if err := RunChrootDry(cfg, log, "useradd", args...); err != nil {
 			return fmt.Errorf("useradd %s: %w", u.Username, err)
 		}
 

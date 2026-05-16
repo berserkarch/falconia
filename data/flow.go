@@ -86,5 +86,5 @@ var Pipeline = []StepDef{
 	{Key: StepCreateUsers, Label: "Create users"},
 	{Key: StepEnableServices, Label: "Enable services"},
 	{Key: StepPostCleanup, Label: "Post-install cleanup"},
-	{Key: StepCleanup, Label: "Unmount & cleanup"},
+	{Key: StepCleanup, Label: "Unmount & cleanup", Soft: true},
 }
