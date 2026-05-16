@@ -1,10 +1,12 @@
 package steps
 
 import (
-	"falconia/config"
-	"falconia/style"
 	"regexp"
 	"strings"
+
+	"falconia/config"
+	"falconia/data"
+	"falconia/style"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,8 +21,10 @@ type HostnameModel struct {
 	err   string
 }
 
-var hostnameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$`)
-var usernameRe = regexp.MustCompile(`^[a-z_][a-z0-9_\-]*$`)
+var (
+	hostnameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$`)
+	usernameRe = regexp.MustCompile(`^[a-z_][a-z0-9_\-]*$`)
+)
 
 func NewHostname(cfg *config.InstallConfig) HostnameModel {
 	ti := textinput.New()
@@ -371,7 +375,7 @@ func (m UsersModel) handleUserEnter() (tea.Model, tea.Cmd) {
 			m.err = "User passwords do not match"
 			return m, nil
 		}
-		groups := []string{"audio", "video", "storage"}
+		groups := append([]string{}, data.DefaultUserGroups...)
 		if m.addToWheel {
 			groups = append([]string{"wheel"}, groups...)
 		}
@@ -393,7 +397,7 @@ func (m UsersModel) Save() {
 
 	un := strings.TrimSpace(m.username.Value())
 	if un != "" {
-		groups := []string{"audio", "video", "storage"}
+		groups := append([]string{}, data.DefaultUserGroups...)
 		if m.addToWheel {
 			groups = append([]string{"wheel"}, groups...)
 		}

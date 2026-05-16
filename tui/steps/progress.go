@@ -1,3 +1,4 @@
+// Package steps -- steps to perform for installation
 package steps
 
 import (
