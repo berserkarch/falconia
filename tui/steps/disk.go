@@ -46,7 +46,7 @@ type DiskModel struct {
 	err string
 }
 
-var fsOptions = []string{"ext4", "btrfs"}
+var fsOptions = []string{"ext4", "btrfs", "xfs"}
 
 func NewDisk(cfg *config.InstallConfig, advanced bool) DiskModel {
 	ti := textinput.New()

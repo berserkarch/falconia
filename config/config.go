@@ -119,10 +119,12 @@ func DEDisplayManager(de string) string {
 	switch de {
 	case "gnome":
 		return "gdm"
-	case "kde", "hyprland", "i3":
+	case "kde", "hyprland", "i3", "openbox":
 		return "sddm"
 	case "xfce":
 		return "sddm"
+	case "cinnamon":
+		return "lightdm"
 	default:
 		return ""
 	}

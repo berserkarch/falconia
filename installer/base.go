@@ -41,7 +41,9 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		log("Generating initramfs with dracut...")
 
 		confDir := "/mnt/etc/dracut.conf.d"
-		os.MkdirAll(confDir, 0o755)
+		if err := os.MkdirAll(confDir, 0o755); err != nil {
+			return fmt.Errorf("create dracut conf dir: %w", err)
+		}
 
 		// Plymouth must be in dracut modules so the splash screen is embedded in
 		// the initramfs. The theme is set below before dracut runs so the right

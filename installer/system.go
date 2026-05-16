@@ -84,7 +84,13 @@ func ConfigureNetwork(cfg *config.InstallConfig, log LineHandler) error {
 		return err
 	}
 
-	// Write the connection profile
+	// Write the connection profile.
+	// Only include [wifi-security] when a password is provided — omitting it
+	// entirely is how NetworkManager handles open (unencrypted) access points.
+	security := ""
+	if cfg.WifiPass != "" {
+		security = fmt.Sprintf("[wifi-security]\nkey-mgmt=wpa-psk\npsk=%s\n\n", cfg.WifiPass)
+	}
 	profile := fmt.Sprintf(`[connection]
 id=%s
 uuid=%s
@@ -94,17 +100,13 @@ type=wifi
 mode=infrastructure
 ssid=%s
 
-[wifi-security]
-key-mgmt=wpa-psk
-psk=%s
-
-[ipv4]
+%s[ipv4]
 method=auto
 
 [ipv6]
 addr-gen-mode=default
 method=auto
-`, cfg.WifiSSID, randomUUID(), cfg.WifiSSID, cfg.WifiPass)
+`, cfg.WifiSSID, randomUUID(), cfg.WifiSSID, security)
 
 	path := fmt.Sprintf("/mnt/etc/NetworkManager/system-connections/%s.nmconnection", cfg.WifiSSID)
 	if err := writeChroot(path, profile); err != nil {
