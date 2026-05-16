@@ -323,7 +323,7 @@ var ByDE = map[string][]string{
 		"i3lock", "i3status", "jq", "sddm", "berserk-sddm-theme", "nwg-look", "mpv",
 		"network-manager-applet", "numlockx", "playerctl", "polkit-kde-agent",
 		"rofi", "scrot", "sysstat", "thunar", "thunar-archive-plugin", "berserk-config-i3wm",
-		"thunar-volman", "tumbler", "unzip", "xarchiver", "xbindkeys",
+		"thunar-volman", "tumbler", "unzip", "xarchiver", "xbindkeys", "polybar",
 		"xdg-user-dirs-gtk", "xed", "xorg-xdpyinfo", "xss-lock", "zip",
 	},
 	"openbox": {
