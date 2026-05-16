@@ -55,4 +55,9 @@ var DefaultUserGroups = []string{
 	"rfkill",
 	"docker",
 	"wireshark",
+	"uucp",
+	"tty",
+	"plugdev",
+	"libvirt",
+	"kvm",
 }
