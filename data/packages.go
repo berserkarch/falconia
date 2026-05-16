@@ -249,6 +249,8 @@ var CommonDE = []string{
 	"xl2tpd",
 	"wpa_supplicant",
 	"yay",
+	"qt5ct",
+	"qt6ct",
 }
 
 // ByDE maps a desktop environment name to its pacman packages.
@@ -281,7 +283,7 @@ var ByDE = map[string][]string{
 		"xdg-desktop-portal-gnome", "xdg-desktop-portal",
 		"xdg-user-dirs-gtk", "gnome-shell-extensions",
 		"gnome-shell-extension-dash-to-dock", "sddm",
-		"berserk-config-gnome",
+		"berserk-config-gnome", "berserk-sddm-theme",
 	},
 	"xfce": {
 		"blueman", "file-roller", "galculator", "gvfs", "gvfs-afc",
@@ -325,6 +327,10 @@ var ByDE = map[string][]string{
 		"thunar-volman", "tumbler", "unzip", "xarchiver", "xbindkeys",
 		"xdg-user-dirs-gtk", "xed", "xfce4-terminal", "xorg-xdpyinfo",
 		"xss-lock", "zip",
+	},
+	"openbox": {
+		"obmenu-generator", "berserk-config-openbox", "sddm", "berserk-sddm-theme",
+		"thunar",
 	},
 }
 
