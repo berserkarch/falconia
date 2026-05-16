@@ -35,6 +35,10 @@ func installGPUDrivers(cfg *config.InstallConfig, log LineHandler) error {
 			}
 			log(fmt.Sprintf("GPU: %s — installing %s", gpu.Model, key))
 			pkgs := data.New().Add(data.ByDriver[key]...).Build()
+			if len(pkgs) == 0 {
+				log("Warning: no driver package registered for " + key)
+				continue
+			}
 			args := append([]string{"-S", "--noconfirm"}, pkgs...)
 			if err := RunChrootDry(cfg, log, "pacman", args...); err != nil {
 				return fmt.Errorf("install NVIDIA driver: %w", err)
@@ -88,6 +92,10 @@ func installWiFiDrivers(cfg *config.InstallConfig, log LineHandler) error {
 	}
 	log(fmt.Sprintf("WiFi: Broadcom detected — installing %s", key))
 	pkgs := data.ByDriver[key]
+	if len(pkgs) == 0 {
+		log("Warning: no driver package registered for " + key)
+		return nil
+	}
 	args := append([]string{"-S", "--noconfirm"}, pkgs...)
 	if err := RunChrootDry(cfg, log, "pacman", args...); err != nil {
 		return fmt.Errorf("install Broadcom driver: %w", err)

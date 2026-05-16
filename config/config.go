@@ -34,7 +34,8 @@ type InstallConfig struct {
 	DiskModel       string // human label e.g. "Samsung SSD 870 (500 GB)"
 	PartitionScheme string // "guided" | "manual"
 	Filesystem      string // "ext4" | "btrfs" | "xfs"
-	SwapSize        int    // MiB; 0 = no swap partition
+	SwapMode        string // "none" | "partition" | "file" | "suspend"
+	SwapSize        int    // MiB; used for partition/file modes; ignored for suspend (auto-sized to RAM)
 	EncryptDisk     bool
 	EncryptionPass  string // never written to disk or logged
 
@@ -92,6 +93,7 @@ func Defaults() *InstallConfig {
 	return &InstallConfig{
 		PartitionScheme: "guided",
 		Filesystem:      "ext4",
+		SwapMode:        "partition",
 		SwapSize:        4096,
 		Locale:          "en_US.UTF-8",
 		Keymap:          "us",

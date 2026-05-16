@@ -47,6 +47,9 @@ var stepRegistry = map[data.StepKey]func(*config.InstallConfig, installer.LineHa
 	data.StepMountDisks: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.MountDisks(c, log)
 	},
+	data.StepSetupSwap: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.SetupSwap(c, log)
+	},
 	data.StepCopyLiveFiles: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.CopyLiveFiles(c, log)
 	},

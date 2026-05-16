@@ -47,6 +47,12 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 
 	// Build base kernel params: splash + hardware-driven flags.
 	baseParams := "quiet splash"
+	if cfg.Filesystem == "btrfs" && cfg.PartitionScheme != "manual" {
+		// Guided btrfs uses the @ subvolume layout. Without this, the kernel
+		// mounts subvolid=5 (top-level) and can't find /sbin/init.
+		// Manual mode skips this because we don't create subvolumes there.
+		baseParams += " rootflags=subvol=/@"
+	}
 	if cfg.Hardware.HasNVMe {
 		baseParams += " nvme_load=YES"
 	}
@@ -215,6 +221,9 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 
 	var kernelOpts string
 	extraParams := "quiet splash"
+	if cfg.Filesystem == "btrfs" && cfg.PartitionScheme != "manual" {
+		extraParams += " rootflags=subvol=/@"
+	}
 	if cfg.Hardware.HasNVMe {
 		extraParams += " nvme_load=YES"
 	}
@@ -273,13 +282,16 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 	}
 }
 
-// rootPartition returns the root partition path for UUID lookup.
+// rootPartition returns the block device path for the root partition.
+// Manual mode: the user-picked partition for "/".
+// Guided + swap partition: p3 (boot/bios=1, swap=2, root=3).
+// Guided otherwise:        p2 (boot/bios=1, root=2).
 func rootPartition(cfg *config.InstallConfig) string {
 	if cfg.PartitionScheme == "manual" {
 		return cfg.MountPoints["/"]
 	}
 	p := partSuffix(cfg.Disk)
-	if cfg.SwapSize > 0 {
+	if cfg.SwapMode == "partition" {
 		return cfg.Disk + p + "3"
 	}
 	return cfg.Disk + p + "2"

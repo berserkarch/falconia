@@ -45,8 +45,8 @@ func PartitionDisk(cfg *config.InstallConfig, log LineHandler) error {
 // partitionUEFI creates:
 //
 //	sdX1 – 512MiB EFI System (FAT32)
-//	sdX2 – SwapSize MiB Linux swap  (if SwapSize > 0)
-//	sdX3 – remainder Linux filesystem
+//	sdX2 – SwapSize MiB Linux swap  (if SwapMode == "partition")
+//	sdX3 – remainder Linux filesystem  (sdX2 when no swap partition)
 func partitionUEFI(cfg *config.InstallConfig, log LineHandler) error {
 	disk := cfg.Disk
 
@@ -57,22 +57,19 @@ func partitionUEFI(cfg *config.InstallConfig, log LineHandler) error {
 	}
 
 	next := "513MiB"
-	partNum := 2
 
-	if cfg.SwapSize > 0 {
+	if cfg.SwapMode == "partition" {
 		swapEnd := fmt.Sprintf("%dMiB", 513+cfg.SwapSize)
 		cmds = append(cmds,
 			[]string{"parted", "-s", disk, "mkpart", "swap", "linux-swap",
 				next, swapEnd},
 		)
 		next = swapEnd
-		partNum++
 	}
 
 	cmds = append(cmds,
 		[]string{"parted", "-s", disk, "mkpart", "root", cfg.Filesystem, next, "100%"},
 	)
-	_ = partNum
 
 	for _, c := range cmds {
 		if err := RunDry(cfg, log, c[0], c[1:]...); err != nil {
@@ -85,8 +82,8 @@ func partitionUEFI(cfg *config.InstallConfig, log LineHandler) error {
 // partitionBIOS creates:
 //
 //	sdX1 – 1MiB BIOS boot (no fs)
-//	sdX2 – SwapSize MiB Linux swap  (if SwapSize > 0)
-//	sdX3 – remainder Linux filesystem
+//	sdX2 – SwapSize MiB Linux swap  (if SwapMode == "partition")
+//	sdX3 – remainder Linux filesystem  (sdX2 when no swap partition)
 func partitionBIOS(cfg *config.InstallConfig, log LineHandler) error {
 	disk := cfg.Disk
 
@@ -98,7 +95,7 @@ func partitionBIOS(cfg *config.InstallConfig, log LineHandler) error {
 
 	next := "2MiB"
 
-	if cfg.SwapSize > 0 {
+	if cfg.SwapMode == "partition" {
 		swapEnd := fmt.Sprintf("%dMiB", 2+cfg.SwapSize)
 		cmds = append(cmds,
 			[]string{"parted", "-s", disk, "mkpart", "primary", "linux-swap", next, swapEnd},
@@ -166,17 +163,13 @@ func FormatDisks(cfg *config.InstallConfig, log LineHandler) error {
 		}
 	}
 
-	rootPart := disk + p + "3"
+	rootPart := rootPartition(cfg)
 	swapPart := disk + p + "2"
 
-	if cfg.SwapSize > 0 {
+	if cfg.SwapMode == "partition" {
 		if err := RunDry(cfg, log, "mkswap", swapPart); err != nil {
 			return fmt.Errorf("mkswap: %w", err)
 		}
-	} else {
-		// no swap: root is always partition 2 regardless of firmware
-		// (BIOS: bios-boot=1, root=2; UEFI: esp=1, root=2)
-		rootPart = disk + p + "2"
 	}
 
 	var mkfsCmd []string
@@ -203,9 +196,14 @@ func FormatDisks(cfg *config.InstallConfig, log LineHandler) error {
 		rootPart = "/dev/mapper/cryptroot"
 	}
 
+	if cfg.Filesystem == "btrfs" {
+		if err := RunDry(cfg, log, "mkfs.btrfs", "-f", rootPart); err != nil {
+			return fmt.Errorf("format root: %w", err)
+		}
+		return createBtrfsSubvols(cfg, log, rootPart)
+	}
+
 	switch cfg.Filesystem {
-	case "btrfs":
-		mkfsCmd = []string{"mkfs.btrfs", "-f", rootPart}
 	case "xfs":
 		mkfsCmd = []string{"mkfs.xfs", "-f", rootPart}
 	default: // ext4
@@ -260,20 +258,22 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 	disk := cfg.Disk
 	p := partSuffix(disk)
 
-	rootPart := disk + p + "3"
+	rootPart := rootPartition(cfg)
 	swapPart := disk + p + "2"
-
-	if cfg.SwapSize == 0 {
-		rootPart = disk + p + "2"
-	}
 
 	if cfg.EncryptDisk {
 		rootPart = "/dev/mapper/cryptroot"
 	}
 
-	// Mount root
-	if err := RunDry(cfg, log, "mount", rootPart, "/mnt"); err != nil {
-		return fmt.Errorf("mount root: %w", err)
+	// Mount root (btrfs uses subvolumes; others plain mount)
+	if cfg.Filesystem == "btrfs" {
+		if err := mountBtrfsSubvols(cfg, log, rootPart); err != nil {
+			return err
+		}
+	} else {
+		if err := RunDry(cfg, log, "mount", rootPart, "/mnt"); err != nil {
+			return fmt.Errorf("mount root: %w", err)
+		}
 	}
 
 	// Mount EFI
@@ -291,13 +291,64 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 		}
 	}
 
-	// Enable swap
-	if cfg.SwapSize > 0 {
+	// Enable swap partition (swap file is handled by SetupSwap)
+	if cfg.SwapMode == "partition" {
 		if err := RunDry(cfg, log, "swapon", swapPart); err != nil {
 			return fmt.Errorf("swapon: %w", err)
 		}
 	}
 
+	return nil
+}
+
+// createBtrfsSubvols mounts dev at /mnt, creates the standard subvolume layout,
+// then unmounts. MountDisks re-mounts each subvolume with the proper options.
+func createBtrfsSubvols(cfg *config.InstallConfig, log LineHandler, dev string) error {
+	if err := RunDry(cfg, log, "mount", dev, "/mnt"); err != nil {
+		return fmt.Errorf("mount btrfs for subvol creation: %w", err)
+	}
+	for _, sv := range []string{"@", "@home", "@cache", "@log"} {
+		if err := RunDry(cfg, log, "btrfs", "subvolume", "create", "/mnt/"+sv); err != nil {
+			_ = Run(log, "umount", "/mnt")
+			return fmt.Errorf("create subvol %s: %w", sv, err)
+		}
+	}
+	if err := RunDry(cfg, log, "umount", "/mnt"); err != nil {
+		return fmt.Errorf("umount btrfs after subvol creation: %w", err)
+	}
+	return nil
+}
+
+const btrfsMountOpts = "compress=zstd,noatime"
+
+// mountBtrfsSubvols mounts each btrfs subvolume under /mnt with zstd
+// compression and noatime.
+func mountBtrfsSubvols(cfg *config.InstallConfig, log LineHandler, dev string) error {
+	if err := RunDry(cfg, log, "mount", "-o", "subvol=/@,"+btrfsMountOpts, dev, "/mnt"); err != nil {
+		return fmt.Errorf("mount btrfs @: %w", err)
+	}
+
+	type subvol struct {
+		name string
+		path string
+	}
+	subvols := []subvol{
+		{"@home", "/mnt/home"},
+		{"@cache", "/mnt/var/cache"},
+		{"@log", "/mnt/var/log"},
+	}
+	for _, sv := range subvols {
+		if !cfg.DryRun {
+			if err := os.MkdirAll(sv.path, 0o755); err != nil {
+				return fmt.Errorf("mkdir %s: %w", sv.path, err)
+			}
+		} else {
+			log(styleGood("[DRY RUN] Would execute: ") + "mkdir -p " + sv.path)
+		}
+		if err := RunDry(cfg, log, "mount", "-o", "subvol=/"+sv.name+","+btrfsMountOpts, dev, sv.path); err != nil {
+			return fmt.Errorf("mount btrfs %s: %w", sv.name, err)
+		}
+	}
 	return nil
 }
 

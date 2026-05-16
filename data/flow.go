@@ -15,6 +15,7 @@ const (
 	StepPartitionDisk  StepKey = "partition-disk"
 	StepFormatDisks    StepKey = "format-disks"
 	StepMountDisks     StepKey = "mount-disks"
+	StepSetupSwap      StepKey = "setup-swap"
 	StepCopyLiveFiles  StepKey = "copy-live-files"
 	StepPacstrap       StepKey = "pacstrap"
 	StepGenFstab       StepKey = "gen-fstab"
@@ -57,6 +58,9 @@ var Pipeline = []StepDef{
 	{Key: StepPartitionDisk, Label: "Partition disk"},
 	{Key: StepFormatDisks, Label: "Format filesystems"},
 	{Key: StepMountDisks, Label: "Mount filesystems"},
+	{Key: StepSetupSwap, Label: "Set up swap", When: func(c *config.InstallConfig) bool {
+		return c.SwapMode == "file" || c.SwapMode == "suspend"
+	}},
 	{Key: StepCopyLiveFiles, Label: "Copy live environment files"},
 	{Key: StepPacstrap, Label: "Install base system (pacstrap)"},
 	{Key: StepGenFstab, Label: "Generate fstab"},
