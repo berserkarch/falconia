@@ -298,14 +298,14 @@ var ByDE = map[string][]string{
 		"xfce4-xkb-plugin",
 		"berserk-sddm-theme", "berserk-config-xfce",
 	},
-	"cinnamon": {
-		"cinnamon", "cinnamon-translations", "file-roller", "galculator",
-		"gnome-screenshot", "gnome-system-monitor", "gnome-terminal",
-		"gthumb", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp",
-		"gvfs-nfs", "gvfs-smb", "sddm", "berserk-sddm-theme", "mpv",
-		"nemo-fileroller", "nemo-image-converter", "nemo-share", "x-apps",
-		"xdg-user-dirs-gtk",
-	},
+	// "cinnamon": {
+	// 	"cinnamon", "cinnamon-translations", "file-roller", "galculator",
+	// 	"gnome-screenshot", "gnome-system-monitor", "gnome-terminal",
+	// 	"gthumb", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp",
+	// 	"gvfs-nfs", "gvfs-smb", "sddm", "berserk-sddm-theme", "mpv",
+	// 	"nemo-fileroller", "nemo-image-converter", "nemo-share", "x-apps",
+	// 	"xdg-user-dirs-gtk",
+	// },
 	"hyprland": {
 		"hyprland", "sddm", "waybar", "rofi-wayland", "swww", "xclip",
 		"wl-clipboard", "xdotool", "qt5ct", "qt6ct", "kvantum",

@@ -1,10 +1,11 @@
 package steps
 
 import (
-	"falconia/config"
-	"falconia/style"
 	"fmt"
 	"strings"
+
+	"falconia/config"
+	"falconia/style"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -116,10 +117,10 @@ func NewDesktop(cfg *config.InstallConfig) DesktopModel {
 		{"gnome", "GNOME", "Full GNOME desktop + GDM", 800},
 		{"kde", "KDE Plasma", "Full Plasma desktop + SDDM", 700},
 		{"xfce", "XFCE", "Lightweight desktop + LightDM", 250},
-		{"cinnamon", "Cinnamon", "Traditional desktop + LightDM", 400},
+		// {"cinnamon", "Cinnamon", "Traditional desktop + LightDM", 400},
 		{"hyprland", "Hyprland", "Wayland compositor + SDDM + waybar", 180},
 		{"i3", "i3", "Tiling window manager + SDDM + xorg", 120},
-		{"openbox", "Openbox", "Stacking window manager + SDDM", 80},
+		{"openbox", "Openbox", "Stacking window manager + SDDM", 160},
 	}
 	cursor := 0
 	for i, o := range options {
