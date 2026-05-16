@@ -4,7 +4,7 @@ package config
 // HardwareProfile is populated once at startup by installer.DetectHardware()
 // and never changes after that.  All installer functions read from it.
 type HardwareProfile struct {
-	CPU      string    // "intel" | "amd" | "other"
+	CPU      string // "intel" | "amd" | "other"
 	GPUs     []GPUInfo
 	WiFi     string // "broadcom" | "other"
 	VM       string // "virtualbox" | "vmware" | "kvm" | "qemu" | "none"
@@ -59,8 +59,7 @@ type InstallConfig struct {
 	Kernel string // "linux" | "linux-lts" | "linux-zen" | "linux-hardened"
 
 	// --- Desktop ---
-	DesktopEnv     string // "none" | "gnome" | "kde" | "xfce" | "hyprland" | "i3"
-	DisplayManager string // auto-set from DE choice
+	DesktopEnv string // "none" | "gnome" | "kde" | "xfce" | "hyprland" | "i3"
 
 	// --- Extra Packages ---
 	ExtraPackages []string
@@ -100,9 +99,9 @@ func Defaults() *InstallConfig {
 		DesktopEnv:      "none",
 		Bootloader:      "grub",
 		GrubTimeout:     5,
-		RankMirrors: true,
-		Hostname:    "berserkarch",
-		MountPoints: make(map[string]string),
+		RankMirrors:     true,
+		Hostname:        "berserkarch",
+		MountPoints:     make(map[string]string),
 	}
 }
 
@@ -112,21 +111,5 @@ func (c *InstallConfig) BootloaderOptions() []string {
 		return []string{"grub", "systemd-boot"}
 	}
 	return []string{"grub"}
-}
-
-// DEDisplayManager maps a desktop environment to its default display manager.
-func DEDisplayManager(de string) string {
-	switch de {
-	case "gnome":
-		return "gdm"
-	case "kde", "hyprland", "i3", "openbox":
-		return "sddm"
-	case "xfce":
-		return "sddm"
-	case "cinnamon":
-		return "lightdm"
-	default:
-		return ""
-	}
 }
 
