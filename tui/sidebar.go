@@ -95,24 +95,9 @@ func SidebarView(cfg *config.InstallConfig, step, total int, advanced bool) stri
 
 	b.WriteString("\n")
 
-	// Post-install
-	var flags []string
 	if cfg.RankMirrors {
-		flags = append(flags, "mirrors")
+		row("Mirrors", "rank on install")
 	}
-	if cfg.EnableSSH {
-		flags = append(flags, "ssh")
-	}
-	if cfg.EnableBluetooth {
-		flags = append(flags, "bt")
-	}
-	if cfg.EnableCups {
-		flags = append(flags, "cups")
-	}
-	if len(flags) > 0 {
-		row("Services", strings.Join(flags, " "))
-	}
-
 	if len(cfg.ExtraPackages) > 0 {
 		row("Packages", fmt.Sprintf("%d selected", len(cfg.ExtraPackages)))
 	}

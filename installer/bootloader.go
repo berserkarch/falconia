@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"falconia/config"
+	"falconia/data"
 )
 
 // InstallBootloader installs the configured bootloader inside the chroot.
@@ -44,6 +45,28 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 		return err
 	}
 
+	// Build base kernel params: splash + hardware-driven flags.
+	baseParams := "quiet splash"
+	if cfg.Hardware.HasNVMe {
+		baseParams += " nvme_load=YES"
+	}
+	for _, gpu := range cfg.Hardware.GPUs {
+		if gpu.Vendor == "nvidia" {
+			baseParams += " nvidia-drm.modeset=1"
+			break
+		}
+	}
+	if !cfg.DryRun {
+		err := RunChroot(log, "sed", "-i",
+			fmt.Sprintf(`s|^\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"|\1 %s"|`, baseParams),
+			"/etc/default/grub")
+		if err != nil {
+			log(fmt.Sprintf("Warning: add base params to GRUB cmdline: %v", err))
+		}
+	} else {
+		log(styleGood("[DRY RUN] Would add to GRUB_CMDLINE_LINUX_DEFAULT: ") + baseParams)
+	}
+
 	if cfg.EncryptDisk {
 		// Enable cryptodisk support
 		if !cfg.DryRun {
@@ -67,7 +90,7 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 		}
 		// dracut reads rd.luks.uuid/rd.luks.name, NOT cryptdevice= (mkinitcpio syntax).
 		// rd.luks.name maps the UUID to the /dev/mapper/cryptroot name used by root=.
-		cryptParam := fmt.Sprintf(`rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot`, uuid, uuid)
+		cryptParam := fmt.Sprintf(`rd.luks.uuid=%s rd.luks.name=%s=cryptroot rd.luks.key=/crypto_keyfile.bin root=/dev/mapper/cryptroot`, uuid, uuid)
 		if !cfg.DryRun {
 			err := RunChroot(log, "sed", "-i", fmt.Sprintf(`s|^\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"|\1 %s"|`, cryptParam), "/etc/default/grub")
 			if err != nil {
@@ -117,6 +140,21 @@ func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 		}
 	}
 
+	// If Windows was detected, tell grub-mkconfig to include it via os-prober.
+	if cfg.WindowsEFIPath != "" {
+		if !cfg.DryRun {
+			err := RunChroot(log, "bash", "-c",
+				`grep -q "^#\?GRUB_DISABLE_OS_PROBER=" /etc/default/grub `+
+					`&& sed -i 's/^#\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/' /etc/default/grub `+
+					`|| echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub`)
+			if err != nil {
+				log("Warning: enable os-prober for dual-boot: " + err.Error())
+			}
+		} else {
+			log(styleGood("[DRY RUN] Would enable GRUB_DISABLE_OS_PROBER=false for dual-boot"))
+		}
+	}
+
 	return RunChrootDry(cfg, log, "grub-mkconfig", "-o", "/boot/grub/grub.cfg")
 }
 
@@ -140,20 +178,19 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 		if err := RunChroot(log, "cp", initramfs, "/boot/efi/"); err != nil {
 			return fmt.Errorf("copy initramfs to ESP: %w", err)
 		}
-		// Copy microcode image to ESP if installed; it must also be on the ESP
-		// for systemd-boot to load it (unlike GRUB, which handles this automatically).
-		if cfg.ExtraServices["microcode"] {
-			for _, pkg := range detectMicrocode() {
-				src := fmt.Sprintf("/boot/%s.img", pkg)
-				if err := RunChroot(log, "cp", src, "/boot/efi/"); err != nil {
-					log(fmt.Sprintf("Warning: could not copy %s to ESP: %v", src, err))
-				}
+		// Copy microcode image to ESP — required for systemd-boot to load it
+		// (unlike GRUB which handles microcode automatically from /boot).
+		ucodePkgs := data.ByMicrocode[cfg.Hardware.CPU]
+		for _, pkg := range ucodePkgs {
+			src := fmt.Sprintf("/boot/%s.img", pkg)
+			if err := RunChroot(log, "cp", src, "/boot/efi/"); err != nil {
+				log(fmt.Sprintf("Warning: could not copy %s to ESP: %v", src, err))
 			}
 		}
 	} else {
 		log(styleGood("[DRY RUN] Would copy kernel and initramfs to /boot/efi/"))
-		if cfg.ExtraServices["microcode"] {
-			log(styleGood("[DRY RUN] Would copy microcode image to /boot/efi/"))
+		if ucode := data.ByMicrocode[cfg.Hardware.CPU]; len(ucode) > 0 {
+			log(styleGood("[DRY RUN] Would copy microcode to /boot/efi/: ") + ucode[0])
 		}
 	}
 
@@ -171,18 +208,28 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 
 	// Build loader entry. Microcode initrd must appear before the main initramfs.
 	loaderEntry := fmt.Sprintf("title   BerserkArch\nlinux   /vmlinuz-%s\n", cfg.Kernel)
-	if cfg.ExtraServices["microcode"] {
-		for _, pkg := range detectMicrocode() {
-			loaderEntry += fmt.Sprintf("initrd  /%s.img\n", pkg)
-		}
+	for _, pkg := range data.ByMicrocode[cfg.Hardware.CPU] {
+		loaderEntry += fmt.Sprintf("initrd  /%s.img\n", pkg)
 	}
 	loaderEntry += fmt.Sprintf("initrd  /initramfs-%s.img\n", cfg.Kernel)
 
 	var kernelOpts string
+	extraParams := "quiet splash"
+	if cfg.Hardware.HasNVMe {
+		extraParams += " nvme_load=YES"
+	}
+	for _, gpu := range cfg.Hardware.GPUs {
+		if gpu.Vendor == "nvidia" {
+			extraParams += " nvidia-drm.modeset=1"
+			break
+		}
+	}
 	if cfg.EncryptDisk {
-		kernelOpts = fmt.Sprintf("rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot rw", uuid, uuid)
+		// No rd.luks.key here: the keyfile is not embedded in the initramfs for
+		// systemd-boot (ESP is unencrypted). The crypt module will prompt once.
+		kernelOpts = fmt.Sprintf("rd.luks.uuid=%s rd.luks.name=%s=cryptroot root=/dev/mapper/cryptroot rw %s", uuid, uuid, extraParams)
 	} else {
-		kernelOpts = fmt.Sprintf("root=UUID=%s rw", uuid)
+		kernelOpts = fmt.Sprintf("root=UUID=%s rw %s", uuid, extraParams)
 	}
 	loaderEntry += "options " + kernelOpts + "\n"
 
@@ -200,6 +247,20 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 	} else {
 		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/boot/efi/loader/entries/arch.conf")
 		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/etc/kernel/cmdline")
+	}
+
+	// Windows dual-boot entry for systemd-boot.
+	if cfg.WindowsEFIPath != "" {
+		windowsEntry := "title   Windows\nefi     /EFI/Microsoft/Boot/bootmgfw.efi\n"
+		if !cfg.DryRun {
+			if err := writeChroot("/mnt/boot/efi/loader/entries/windows.conf", windowsEntry); err != nil {
+				log("Warning: write Windows boot entry: " + err.Error())
+			} else {
+				log("$ wrote /boot/efi/loader/entries/windows.conf")
+			}
+		} else {
+			log(styleGood("[DRY RUN] Would write: ") + "/mnt/boot/efi/loader/entries/windows.conf")
+		}
 	}
 
 	loaderConf := fmt.Sprintf("default arch\ntimeout %d\nconsole-mode max\neditor no\n", cfg.GrubTimeout)

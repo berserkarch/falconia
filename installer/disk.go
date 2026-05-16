@@ -21,9 +21,25 @@ func PartitionDisk(cfg *config.InstallConfig, log LineHandler) error {
 	}
 
 	if cfg.Firmware == "uefi" {
-		return partitionUEFI(cfg, log)
+		if err := partitionUEFI(cfg, log); err != nil {
+			return err
+		}
+	} else {
+		if err := partitionBIOS(cfg, log); err != nil {
+			return err
+		}
 	}
-	return partitionBIOS(cfg, log)
+
+	// Re-read partition table and wait for udev to create the new device nodes.
+	// Without this, mkfs may run against stale nodes (e.g. an old LUKS partition)
+	// before the kernel has seen the new layout.
+	if !cfg.DryRun {
+		_ = Run(log, "partprobe", disk)
+		_ = Run(log, "udevadm", "settle")
+	} else {
+		log(styleGood("[DRY RUN] Would execute: ") + "partprobe " + disk + " && udevadm settle")
+	}
+	return nil
 }
 
 // partitionUEFI creates:
@@ -289,10 +305,8 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 func Cleanup(cfg *config.InstallConfig, log LineHandler) error {
 	_ = RunDry(cfg, log, "swapoff", "-a")
 	err := RunDry(cfg, log, "umount", "-R", "/mnt")
-	if cfg.EncryptDisk && !cfg.DryRun {
+	if cfg.EncryptDisk {
 		_ = RunDry(cfg, log, "cryptsetup", "close", "cryptroot")
-	} else if cfg.EncryptDisk && cfg.DryRun {
-		log(styleGood("[DRY RUN] Would execute: ") + "cryptsetup close cryptroot")
 	}
 	return err
 }

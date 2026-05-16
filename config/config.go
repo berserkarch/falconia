@@ -1,9 +1,31 @@
+// Package config just contains configs
 package config
+
+// HardwareProfile is populated once at startup by installer.DetectHardware()
+// and never changes after that.  All installer functions read from it.
+type HardwareProfile struct {
+	CPU      string    // "intel" | "amd" | "other"
+	GPUs     []GPUInfo
+	WiFi     string // "broadcom" | "other"
+	VM       string // "virtualbox" | "vmware" | "kvm" | "qemu" | "none"
+	RAMBytes int64  // total physical RAM in bytes
+	HasNVMe  bool
+}
+
+// GPUInfo describes one graphics adapter found on the system.
+type GPUInfo struct {
+	Vendor  string // "nvidia" | "amd" | "intel" | "other"
+	Model   string // human-readable model name from lspci
+	UseOpen bool   // true = install nvidia-open; false = nvidia (proprietary)
+}
 
 // InstallConfig is the single source of truth passed through every step.
 // All Phase 1 steps read from and write to this struct.
 // Phase 2 installer functions take a *InstallConfig and execute accordingly.
 type InstallConfig struct {
+	// --- Hardware (auto-detected at startup, never user-set) ---
+	Hardware HardwareProfile
+
 	// --- System ---
 	Firmware string // "uefi" | "bios"  (auto-detected on startup)
 
@@ -48,11 +70,8 @@ type InstallConfig struct {
 	GrubTimeout int    // seconds (GRUB only)
 
 	// --- Post-install ---
-	EnableBluetooth bool
-	EnableCups      bool
-	EnableSSH       bool
-	RankMirrors     bool
-	ExtraServices   map[string]bool // dynamic services
+	RankMirrors    bool
+	WindowsEFIPath string // non-empty if a Windows installation was detected
 
 	// --- Manual Partitioning ---
 	MountPoints map[string]string // mount point -> partition (e.g. "/" -> "/dev/sda3")
@@ -81,10 +100,9 @@ func Defaults() *InstallConfig {
 		DesktopEnv:      "none",
 		Bootloader:      "grub",
 		GrubTimeout:     5,
-		RankMirrors:     true,
-		Hostname:        "berserkarch",
-		MountPoints:     make(map[string]string),
-		ExtraServices:   make(map[string]bool),
+		RankMirrors: true,
+		Hostname:    "berserkarch",
+		MountPoints: make(map[string]string),
 	}
 }
 
@@ -101,31 +119,14 @@ func DEDisplayManager(de string) string {
 	switch de {
 	case "gnome":
 		return "gdm"
-	case "kde", "hyprland", "i3":
+	case "kde", "hyprland", "i3", "openbox":
 		return "sddm"
 	case "xfce":
+		return "sddm"
+	case "cinnamon":
 		return "lightdm"
 	default:
 		return ""
 	}
 }
 
-// DEPackages returns the pacman package group(s) for a given DE.
-func DEPackages(de string) []string {
-	switch de {
-	case "gnome":
-		return []string{"gnome", "gnome-extra", "gdm"}
-	case "kde":
-		return []string{"plasma", "plasma-wayland-session", "kde-applications", "sddm"}
-	case "xfce":
-		return []string{"xfce4", "xfce4-goodies", "lightdm", "lightdm-gtk-greeter"}
-	case "hyprland":
-		return []string{"hyprland", "xdg-desktop-portal-hyprland", "waybar", "sddm",
-			"kitty", "wofi", "mako", "polkit-kde-agent"}
-	case "i3":
-		return []string{"i3-wm", "i3status", "i3lock", "dmenu", "sddm",
-			"xorg", "xterm", "picom", "nitrogen"}
-	default:
-		return nil
-	}
-}

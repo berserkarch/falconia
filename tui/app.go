@@ -35,7 +35,6 @@ const (
 	stepDesktop
 	stepPackages
 	stepBootloader
-	stepPostInstall
 	stepConfirm
 	stepCount
 )
@@ -101,8 +100,6 @@ func (a *App) loadStep(id stepID) {
 		a.current = steps.NewPackages(a.cfg, a.advanced)
 	case stepBootloader:
 		a.current = steps.NewBootloader(a.cfg)
-	case stepPostInstall:
-		a.current = steps.NewPostInstall(a.cfg)
 	case stepConfirm:
 		a.current = steps.NewConfirm(a.cfg)
 	}

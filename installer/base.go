@@ -1,15 +1,19 @@
 package installer
 
 import (
-	"falconia/config"
+	"crypto/rand"
 	"fmt"
 	"os"
 	"strings"
+
+	"falconia/config"
+	"falconia/data"
 )
 
 // RankMirrors runs reflector to rank pacman mirrors by speed.
 func RankMirrors(cfg *config.InstallConfig, log LineHandler) error {
-	return RunDry(cfg, log,
+	return RunDry(
+		cfg, log,
 		"reflector",
 		"--latest", "20",
 		"--sort", "rate",
@@ -19,36 +23,13 @@ func RankMirrors(cfg *config.InstallConfig, log LineHandler) error {
 
 // Pacstrap installs the base system into /mnt.
 func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
-	pkgs := []string{
-		"base",
-		"base-devel",
-		cfg.Kernel,
-		cfg.Kernel + "-headers",
-		"linux-firmware",
-		"networkmanager",
-		"dracut",
-		"sudo",
-		"vim",
-	}
-
-	// Add filesystem tools
-	switch cfg.Filesystem {
-	case "btrfs":
-		pkgs = append(pkgs, "btrfs-progs")
-	case "xfs":
-		pkgs = append(pkgs, "xfsprogs")
-	default:
-		pkgs = append(pkgs, "e2fsprogs")
-	}
-
-	if cfg.EncryptDisk {
-		pkgs = append(pkgs, "cryptsetup")
-	}
-
-	// Add microcode
-	if cfg.ExtraServices["microcode"] {
-		pkgs = append(pkgs, detectMicrocode()...)
-	}
+	pkgs := data.New().
+		Add(data.Base...).
+		Add(cfg.Kernel, cfg.Kernel+"-headers").
+		AddMap(data.ByFilesystem, cfg.Filesystem).
+		AddIf(cfg.EncryptDisk, data.Encryption...).
+		AddMap(data.ByMicrocode, cfg.Hardware.CPU).
+		Build()
 
 	args := append([]string{"/mnt"}, pkgs...)
 	if err := RunDry(cfg, log, "pacstrap", args...); err != nil {
@@ -59,16 +40,64 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		// Generate initramfs with dracut
 		log("Generating initramfs with dracut...")
 
+		confDir := "/mnt/etc/dracut.conf.d"
+		if err := os.MkdirAll(confDir, 0o755); err != nil {
+			return fmt.Errorf("create dracut conf dir: %w", err)
+		}
+
+		// Plymouth must be in dracut modules so the splash screen is embedded in
+		// the initramfs. The theme is set below before dracut runs so the right
+		// theme assets are baked into the image.
+		plymouthConf := "add_dracutmodules+=\" plymouth \"\n"
+		if err := os.WriteFile(confDir+"/plymouth.conf", []byte(plymouthConf), 0o644); err != nil {
+			log(fmt.Sprintf("Warning: write plymouth dracut config: %v", err))
+		}
+
 		// For encrypted installs, ensure dracut includes the crypt module.
-		// Running inside arch-chroot on a non-encrypted live ISO means dracut
-		// cannot auto-detect the target's dm-crypt root; we must be explicit.
+		// For GRUB: also embed the keyfile so the initramfs can open LUKS without a
+		// second prompt (GRUB already prompted once to read the kernel from /boot).
+		// For systemd-boot: the ESP is unencrypted, so embedding the keyfile there
+		// would expose it; the initramfs prompts for the passphrase instead (one prompt).
 		if cfg.EncryptDisk {
-			confDir := "/mnt/etc/dracut.conf.d"
-			os.MkdirAll(confDir, 0755)
-			encConf := `add_dracutmodules+=" crypt "` + "\n"
-			if err := os.WriteFile(confDir+"/encryption.conf", []byte(encConf), 0644); err != nil {
+			encConf := "add_dracutmodules+=\" crypt \"\n"
+			if cfg.Bootloader != "systemd-boot" {
+				encConf += "install_items+=\" /crypto_keyfile.bin \"\n"
+			}
+			if err := os.WriteFile(confDir+"/encryption.conf", []byte(encConf), 0o644); err != nil {
 				return fmt.Errorf("write dracut encryption config: %w", err)
 			}
+
+			if cfg.Bootloader != "systemd-boot" {
+				// Generate a random keyfile and register it as a second LUKS key slot.
+				// GRUB prompts for the passphrase once (to read kernel + initramfs from the
+				// encrypted partition). The initramfs then finds the embedded keyfile and
+				// unlocks LUKS silently — no second prompt for the user.
+				log("Generating LUKS keyfile to eliminate double passphrase prompt...")
+				keyfile := make([]byte, 512)
+				if _, err := rand.Read(keyfile); err != nil {
+					return fmt.Errorf("generate luks keyfile: %w", err)
+				}
+				// mode 0000: root can still read it (bypasses DAC); normal users cannot.
+				if err := os.WriteFile("/mnt/crypto_keyfile.bin", keyfile, 0o000); err != nil {
+					return fmt.Errorf("write luks keyfile: %w", err)
+				}
+				// Authorize with the passphrase (no trailing newline, matching luksFormat)
+				// to add the keyfile bytes as a new LUKS key slot.
+				lukspart := rootPartition(cfg)
+				if err := runWithStdin(
+					log, strings.NewReader(cfg.EncryptionPass),
+					"cryptsetup", "luksAddKey", "--key-file=-", lukspart, "/mnt/crypto_keyfile.bin",
+				); err != nil {
+					return fmt.Errorf("luksAddKey: %w", err)
+				}
+			}
+		}
+
+		// Set the Plymouth theme before dracut so the correct theme assets are
+		// baked into the initramfs. berserk-plymouth-theme installs the "berserk" theme.
+		log("Setting Plymouth theme...")
+		if err := RunChroot(log, "plymouth-set-default-theme", "berserk"); err != nil {
+			log(fmt.Sprintf("Warning: plymouth-set-default-theme: %v", err))
 		}
 
 		// Find the actual kernel version string from /lib/modules.
@@ -101,24 +130,11 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		}
 	} else {
 		log(styleGood("[DRY RUN] Would execute: ") + "dracut --force /boot/initramfs-" + cfg.Kernel + ".img <kver>")
+		if cfg.EncryptDisk && cfg.Bootloader != "systemd-boot" {
+			log(styleGood("[DRY RUN] Would generate /mnt/crypto_keyfile.bin and add as LUKS key slot"))
+		}
 	}
 
-	return nil
-}
-
-// detectMicrocode returns the appropriate microcode package based on CPU vendor.
-func detectMicrocode() []string {
-	data, err := os.ReadFile("/proc/cpuinfo")
-	if err != nil {
-		return nil
-	}
-	content := string(data)
-	if strings.Contains(content, "GenuineIntel") {
-		return []string{"intel-ucode"}
-	}
-	if strings.Contains(content, "AuthenticAMD") {
-		return []string{"amd-ucode"}
-	}
 	return nil
 }
 
@@ -140,8 +156,16 @@ func GenCrypttab(cfg *config.InstallConfig, log LineHandler) error {
 		return fmt.Errorf("blkid for crypttab: %w", err)
 	}
 
-	content := "# <name>\t<device>\t\t\t\t<password>\t<options>\n"
-	content += fmt.Sprintf("cryptroot\tUUID=%s\t\tnone\t\tluks\n", uuid)
+	// For GRUB: keyfile is embedded in the initramfs; systemd-cryptsetup reads it
+	// to unlock LUKS without a second prompt.
+	// For systemd-boot: ESP is unencrypted so keyfile isn't embedded; "none" tells
+	// systemd-cryptsetup-generator to prompt for the passphrase instead.
+	passField := "/crypto_keyfile.bin"
+	if cfg.Bootloader == "systemd-boot" {
+		passField = "none"
+	}
+	content := "# <name>\t<device>\t\t\t\t<password>\t\t\t<options>\n"
+	content += fmt.Sprintf("cryptroot\tUUID=%s\t\t%s\tluks\n", uuid, passField)
 	log("$ writing /mnt/etc/crypttab")
 	return writeChroot("/mnt/etc/crypttab", content)
 }

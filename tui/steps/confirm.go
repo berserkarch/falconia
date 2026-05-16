@@ -51,7 +51,7 @@ func (m ConfirmModel) View() string {
 	cfg := m.cfg
 	var b strings.Builder
 
-	b.WriteString(style.StyleStepHeader.Render("11 — CONFIRM INSTALLATION") + "\n\n")
+	b.WriteString(style.StyleStepHeader.Render("CONFIRM INSTALLATION") + "\n\n")
 
 	row := func(key, val string) {
 		k := fmt.Sprintf("%-18s", key)
@@ -115,33 +115,11 @@ func (m ConfirmModel) View() string {
 	}
 	b.WriteString("\n")
 
-	b.WriteString(style.StyleSubtitle.Render("Post-install") + "\n")
-	flags := []string{}
 	if cfg.RankMirrors {
-		flags = append(flags, "rank-mirrors")
+		b.WriteString(style.StyleSubtitle.Render("Post-install") + "\n")
+		row("Mirrors", "rank by speed before install")
+		b.WriteString("\n")
 	}
-	if cfg.EnableSSH {
-		flags = append(flags, "ssh")
-	}
-	if cfg.EnableBluetooth {
-		flags = append(flags, "bluetooth")
-	}
-	if cfg.EnableCups {
-		flags = append(flags, "cups")
-	}
-
-	// Add dynamically enabled extra services
-	// sort keys to ensure deterministic output
-	for svc, enabled := range cfg.ExtraServices {
-		if enabled {
-			flags = append(flags, svc)
-		}
-	}
-
-	if len(flags) > 0 {
-		row("Services", m.formatFoldableList(flags))
-	}
-	b.WriteString("\n")
 
 	b.WriteString(style.StyleDanger.Render("⚠  This will permanently erase "+cfg.Disk) + "\n\n")
 

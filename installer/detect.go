@@ -6,6 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
+
+	"falconia/config"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -31,10 +34,12 @@ func ListDisks() ([]DiskInfo, error) {
 }
 
 func listDisksFallback() ([]DiskInfo, error) {
-	out, err := exec.Command("lsblk", "-d", "-o", "PATH,MODEL,SIZE", "--noheadings").Output()
+	// -e 7: exclude loop devices (major 7); -e 11: exclude optical drives (major 11)
+	out, err := exec.Command("lsblk", "-d", "-e", "7,11", "-o", "PATH,MODEL,SIZE", "--noheadings").Output()
 	if err != nil {
 		return nil, fmt.Errorf("lsblk: %w", err)
 	}
+	liveISO := liveIsoDisk()
 	var disks []DiskInfo
 	scanner := bufio.NewScanner(strings.NewReader(string(out)))
 	for scanner.Scan() {
@@ -43,6 +48,9 @@ func listDisksFallback() ([]DiskInfo, error) {
 			continue
 		}
 		path := fields[0]
+		if liveISO != "" && path == liveISO {
+			continue
+		}
 		size := ""
 		model := ""
 		if len(fields) >= 2 {
@@ -63,10 +71,84 @@ func listDisksFallback() ([]DiskInfo, error) {
 	return disks, nil
 }
 
+// liveIsoDisk returns the parent disk path of the Arch ISO boot medium by
+// reading /proc/mounts for the /run/archiso/bootmnt mount point.
+// Returns "" if the mount point isn't found or the parent can't be determined.
+func liveIsoDisk() string {
+	data, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[1] != "/run/archiso/bootmnt" {
+			continue
+		}
+		// fields[0] is e.g. /dev/sda1 — get the parent disk name via lsblk
+		out, err := exec.Command("lsblk", "-n", "-o", "PKNAME", fields[0]).Output()
+		if err != nil {
+			return ""
+		}
+		pkname := strings.TrimSpace(string(out))
+		if pkname == "" {
+			return ""
+		}
+		return "/dev/" + pkname
+	}
+	return ""
+}
+
 // CheckInternet returns nil if an internet connection is detected.
-// We ping a reliable IP (1.1.1.1) to avoid DNS resolution delays.
+// Retries up to 3 times with a 3-second timeout each to tolerate transient blips.
 func CheckInternet(log LineHandler) error {
-	return Run(log, "ping", "-c", "1", "-W", "1", "1.1.1.1")
+	const attempts = 3
+	for i := 1; i <= attempts; i++ {
+		if i > 1 {
+			log(fmt.Sprintf("No response, retrying (%d/%d)...", i, attempts))
+			time.Sleep(2 * time.Second)
+		}
+		if err := Run(log, "ping", "-c", "1", "-W", "3", "1.1.1.1"); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("no internet connection after %d attempts — check your network", attempts)
+}
+
+// DetectWindows probes for an existing Windows installation and sets
+// cfg.WindowsEFIPath to a non-empty value when one is found.
+// Runs os-prober first; falls back to checking the standard Windows EFI path on
+// the mounted ESP. This step is Soft — not finding Windows is fine.
+func DetectWindows(cfg *config.InstallConfig, log LineHandler) error {
+	if cfg.DryRun {
+		log(styleGood("[DRY RUN] Would probe for Windows installation"))
+		return nil
+	}
+
+	// os-prober format: partition[@efi-path]:label:shortname:type
+	if out, err := runOutput("os-prober"); err == nil && strings.TrimSpace(out) != "" {
+		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+			parts := strings.SplitN(strings.TrimSpace(line), ":", 4)
+			if len(parts) < 4 {
+				continue
+			}
+			label, shortname := strings.ToLower(parts[1]), strings.ToLower(parts[2])
+			if strings.Contains(label, "windows") || strings.Contains(shortname, "windows") {
+				cfg.WindowsEFIPath = strings.Split(parts[0], "@")[0]
+				log("Detected Windows on " + cfg.WindowsEFIPath)
+				return nil
+			}
+		}
+	}
+
+	// Fallback: check for the Windows EFI binary directly on the mounted ESP.
+	if _, err := os.Stat("/mnt/boot/efi/EFI/Microsoft/Boot/bootmgfw.efi"); err == nil {
+		cfg.WindowsEFIPath = "uefi"
+		log("Detected Windows EFI at /EFI/Microsoft/Boot/bootmgfw.efi")
+		return nil
+	}
+
+	log("No other OS detected.")
+	return nil
 }
 
 // SyncClock syncs the system clock via timedatectl.

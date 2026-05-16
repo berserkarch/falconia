@@ -2,6 +2,7 @@ package main
 
 import (
 	"falconia/config"
+	"falconia/installer"
 	"falconia/tui"
 	"flag"
 	"fmt"
@@ -21,8 +22,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	hw := installer.DetectHardware()
+
 	app := tui.NewWithConfig(func(cfg *config.InstallConfig) {
 		cfg.DryRun = *dryRun
+		cfg.Hardware = hw
 	})
 
 	p := tea.NewProgram(

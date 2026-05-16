@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"falconia/config"
+	"falconia/data"
 	"falconia/installer"
 	"falconia/style"
 
@@ -19,91 +20,100 @@ import (
 
 type installStep struct {
 	label string
+	soft  bool // if true, failure logs a warning and continues rather than aborting
 	run   func(*config.InstallConfig, installer.LineHandler) error
 }
 
-func buildSteps(cfg *config.InstallConfig) []installStep {
-	steps := []installStep{
-		{"Verify internet", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.CheckInternet(log)
-		}},
-		{"Sync system clock", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.SyncClock(log)
-		}},
-	}
-
-	if cfg.RankMirrors {
-		steps = append(steps, installStep{"Rank mirrors", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.RankMirrors(c, log)
-		}})
-	}
-
-	steps = append(
-		steps,
-		installStep{"Partition disk", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.PartitionDisk(c, log)
-		}},
-		installStep{"Format filesystems", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.FormatDisks(c, log)
-		}},
-		installStep{"Mount filesystems", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.MountDisks(c, log)
-		}},
-		installStep{"Install base system (pacstrap)", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.Pacstrap(c, log)
-		}},
-		installStep{"Generate fstab", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.GenFstab(c, log)
-		}},
-		installStep{"Write crypttab", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.GenCrypttab(c, log)
-		}},
-		installStep{"Set timezone", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.SetTimezone(c, log)
-		}},
-		installStep{"Set locale", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.SetLocale(c, log)
-		}},
-		installStep{"Configure network", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.ConfigureNetwork(c, log)
-		}},
-		installStep{"Set hostname", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.SetHostname(c, log)
-		}},
-		installStep{"Set root password", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.SetRootPassword(c, log)
-		}},
-		installStep{"Create users", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.CreateUsers(c, log)
-		}},
-		installStep{"Install bootloader", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.InstallBootloader(c, log)
-		}},
-	)
-
-	if cfg.DesktopEnv != "none" && cfg.DesktopEnv != "" {
-		steps = append(steps, installStep{"Install desktop environment", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.InstallDesktop(c, log)
-		}})
-	}
-
-	// Always include this step: InstallPackages handles ExtraPackages AND ExtraServices
-	// (docker, tailscale, etc.) AND boolean flags (Bluetooth, SSH, Cups). Skipping when
-	// ExtraPackages is empty would silently leave service-dependency packages uninstalled.
-	steps = append(steps, installStep{"Install extra packages", func(c *config.InstallConfig, log installer.LineHandler) error {
+// stepRegistry maps each StepKey from data.Pipeline to its implementation.
+// To add a new step: declare the key in data/flow.go, add it to data.Pipeline,
+// then register the implementation here.
+var stepRegistry = map[data.StepKey]func(*config.InstallConfig, installer.LineHandler) error{
+	data.StepVerifyInternet: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.CheckInternet(log)
+	},
+	data.StepSyncClock: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.SyncClock(log)
+	},
+	data.StepRankMirrors: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.RankMirrors(c, log)
+	},
+	data.StepPartitionDisk: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.PartitionDisk(c, log)
+	},
+	data.StepFormatDisks: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.FormatDisks(c, log)
+	},
+	data.StepMountDisks: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.MountDisks(c, log)
+	},
+	data.StepCopyLiveFiles: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.CopyLiveFiles(c, log)
+	},
+	data.StepPacstrap: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.Pacstrap(c, log)
+	},
+	data.StepGenFstab: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.GenFstab(c, log)
+	},
+	data.StepSetTimezone: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.SetTimezone(c, log)
+	},
+	data.StepWriteCrypttab: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.GenCrypttab(c, log)
+	},
+	data.StepSetLocale: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.SetLocale(c, log)
+	},
+	data.StepConfigNetwork: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.ConfigureNetwork(c, log)
+	},
+	data.StepSetHostname: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.SetHostname(c, log)
+	},
+	data.StepRootPassword: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.SetRootPassword(c, log)
+	},
+	data.StepCreateUsers: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.CreateUsers(c, log)
+	},
+	data.StepDetectWindows: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.DetectWindows(c, log)
+	},
+	data.StepBootloader: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.InstallBootloader(c, log)
+	},
+	data.StepInstallDesktop: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.InstallDesktop(c, log)
+	},
+	data.StepInstallPkgs: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.InstallPackages(c, log)
-	}})
+	},
+	data.StepInstallDrivers: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.InstallDrivers(c, log)
+	},
+	data.StepEnableServices: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.EnableServices(c, log)
+	},
+	data.StepPostCleanup: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.PostInstallCleanup(c, log)
+	},
+	data.StepCleanup: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.Cleanup(c, log)
+	},
+}
 
-	steps = append(
-		steps,
-		installStep{"Enable services", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.EnableServices(c, log)
-		}},
-		installStep{"Unmount & cleanup", func(c *config.InstallConfig, log installer.LineHandler) error {
-			return installer.Cleanup(c, log)
-		}},
-	)
-
+func buildSteps(cfg *config.InstallConfig) []installStep {
+	var steps []installStep
+	for _, def := range data.Pipeline {
+		if def.When != nil && !def.When(cfg) {
+			continue
+		}
+		fn, ok := stepRegistry[def.Key]
+		if !ok {
+			panic("no implementation registered for step: " + string(def.Key))
+		}
+		steps = append(steps, installStep{label: def.Label, soft: def.Soft, run: fn})
+	}
 	return steps
 }
 
@@ -195,8 +205,12 @@ func (m ProgressModel) Init() tea.Cmd {
 				}
 			}
 			if err := step.run(m.cfg, logHandler); err != nil {
-				m.ch <- InstallErrorMsg{Step: step.label, Err: err}
-				return
+				if step.soft {
+					logHandler("\033[33m⚠  " + step.label + " failed (non-fatal): " + err.Error() + " — continuing\033[0m")
+				} else {
+					m.ch <- InstallErrorMsg{Step: step.label, Err: err}
+					return
+				}
 			}
 			m.ch <- StepCompleteMsg(i)
 		}
@@ -285,7 +299,28 @@ func (m ProgressModel) viewRunning() string {
 	var b strings.Builder
 	b.WriteString(style.StyleTitle.Render("INSTALLING BERSERKARCH") + "\n\n")
 
-	for i, s := range m.steps {
+	// Sliding window: show at most 8 steps centred on the current one.
+	const windowSize = 8
+	const completedShown = 2 // completed steps visible above current
+
+	start := m.current - completedShown
+	if start < 0 {
+		start = 0
+	}
+	end := start + windowSize
+	if end > len(m.steps) {
+		end = len(m.steps)
+		if start = end - windowSize; start < 0 {
+			start = 0
+		}
+	}
+
+	if start > 0 {
+		b.WriteString(style.StyleMuted.Render(fmt.Sprintf("  ↑ %d completed", start)) + "\n")
+	}
+
+	for i := start; i < end; i++ {
+		s := m.steps[i]
 		var icon string
 		switch {
 		case i < m.current:
@@ -305,6 +340,10 @@ func (m ProgressModel) viewRunning() string {
 		b.WriteString(fmt.Sprintf("%s  %s\n", icon, label))
 	}
 
+	if end < len(m.steps) {
+		b.WriteString(style.StyleMuted.Render(fmt.Sprintf("  ↓ %d pending", len(m.steps)-end)) + "\n")
+	}
+
 	b.WriteString("\n")
 
 	pct := 0.0
@@ -312,10 +351,10 @@ func (m ProgressModel) viewRunning() string {
 		pct = float64(m.current) / float64(len(m.steps))
 	}
 	b.WriteString(style.ProgressBar(60, pct) +
-		style.StyleMuted.Render(fmt.Sprintf("  %d%%\n\n", int(pct*100))))
+		style.StyleMuted.Render(fmt.Sprintf("  %d%%", int(pct*100))) + "\n\n")
 
 	if len(m.logLines) > 0 {
-		b.WriteString(m.viewport.View() + "\n")
+		b.WriteString(m.viewport.View() + "\n\n")
 	}
 
 	return b.String()

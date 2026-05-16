@@ -1,9 +1,10 @@
 package installer
 
 import (
-	"falconia/config"
 	"os"
-	"path/filepath"
+
+	"falconia/config"
+	"falconia/data"
 )
 
 // InstallDesktop installs the chosen DE and its display manager.
@@ -13,7 +14,10 @@ func InstallDesktop(cfg *config.InstallConfig, log LineHandler) error {
 		return nil
 	}
 
-	pkgs := config.DEPackages(cfg.DesktopEnv)
+	pkgs := data.New().
+		Add(data.CommonDE...).
+		AddMap(data.ByDE, cfg.DesktopEnv).
+		Build()
 	if len(pkgs) == 0 {
 		return nil
 	}
@@ -22,45 +26,9 @@ func InstallDesktop(cfg *config.InstallConfig, log LineHandler) error {
 	return RunChrootDry(cfg, log, "pacman", args...)
 }
 
-// InstallPackages installs the user's selected extra packages and service dependencies.
+// InstallPackages installs user-selected extra packages.
 func InstallPackages(cfg *config.InstallConfig, log LineHandler) error {
-	pkgs := append([]string{}, cfg.ExtraPackages...)
-
-	// Append packages required for extra services
-	if cfg.ExtraServices["docker"] {
-		pkgs = append(pkgs, "docker")
-	}
-	if cfg.ExtraServices["tailscale"] {
-		pkgs = append(pkgs, "tailscale")
-	}
-	if cfg.ExtraServices["avahi"] {
-		pkgs = append(pkgs, "avahi")
-	}
-	if cfg.ExtraServices["tlp"] {
-		pkgs = append(pkgs, "tlp")
-	}
-	if cfg.ExtraServices["ufw"] {
-		pkgs = append(pkgs, "ufw")
-	}
-	if cfg.ExtraServices["flatpak"] {
-		pkgs = append(pkgs, "flatpak")
-	}
-	if cfg.ExtraServices["snap"] {
-		pkgs = append(pkgs, "snapd")
-	}
-	if cfg.ExtraServices["zram"] {
-		pkgs = append(pkgs, "zram-generator")
-	}
-	if cfg.EnableBluetooth {
-		pkgs = append(pkgs, "bluez", "bluez-utils")
-	}
-	if cfg.EnableCups {
-		pkgs = append(pkgs, "cups")
-	}
-	if cfg.EnableSSH {
-		pkgs = append(pkgs, "openssh")
-	}
-
+	pkgs := data.New().Add(cfg.ExtraPackages...).Build()
 	if len(pkgs) == 0 {
 		log("No extra packages selected, skipping.")
 		return nil
@@ -70,75 +38,57 @@ func InstallPackages(cfg *config.InstallConfig, log LineHandler) error {
 	return RunChrootDry(cfg, log, "pacman", args...)
 }
 
-// EnableServices enables systemd services based on config flags.
-func EnableServices(cfg *config.InstallConfig, log LineHandler) error {
-	services := []string{"NetworkManager"} // always
-
-	if cfg.EnableBluetooth {
-		services = append(services, "bluetooth")
-	}
-	if cfg.EnableCups {
-		services = append(services, "cups")
-	}
-	if cfg.EnableSSH {
-		services = append(services, "sshd")
-	}
-	if cfg.DesktopEnv != "none" && cfg.DisplayManager != "" {
-		services = append(services, cfg.DisplayManager)
-	}
-	if cfg.ExtraServices["docker"] {
-		services = append(services, "docker")
-	}
-	if cfg.ExtraServices["tailscale"] {
-		services = append(services, "tailscaled")
-	}
-	if cfg.ExtraServices["avahi"] {
-		services = append(services, "avahi-daemon")
-	}
-	if cfg.ExtraServices["tlp"] {
-		services = append(services, "tlp")
-	}
-	if cfg.ExtraServices["ufw"] {
-		services = append(services, "ufw")
-	}
-	if cfg.ExtraServices["snap"] {
-		services = append(services, "snapd.socket")
-	}
-	if cfg.ExtraServices["trim"] {
-		services = append(services, "fstrim.timer")
+// PostInstallCleanup performs final housekeeping on the installed system.
+func PostInstallCleanup(cfg *config.InstallConfig, log LineHandler) error {
+	// Replace the live system's machine ID with a fresh one for the new install.
+	if err := RunChrootDry(cfg, log, "systemd-machine-id-setup"); err != nil {
+		log("Warning: systemd-machine-id-setup: " + err.Error())
 	}
 
-	for _, svc := range services {
-		if err := RunChrootDry(cfg, log, "systemctl", "enable", svc); err != nil {
-			log("Warning: Failed to enable " + svc)
+	// Delete .pacnew files left behind when pacstrap writes config files that
+	// already exist (usually because we copied them from the live environment).
+	if !cfg.DryRun {
+		if err := Run(log, "find", "/mnt", "-name", "*.pacnew", "-delete"); err != nil {
+			log("Warning: .pacnew cleanup: " + err.Error())
 		}
+	} else {
+		log(styleGood("[DRY RUN] Would remove: ") + "*.pacnew files under /mnt")
 	}
 
-	// Flatpak configuration
-	if cfg.ExtraServices["flatpak"] && !cfg.DryRun {
-		log("Configuring Flathub repository...")
-		if err := RunChroot(log, "flatpak", "remote-add", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"); err != nil {
-			log("Warning: Failed to add Flathub remote")
+	// Enable persistent journal storage so logs survive reboots.
+	confDir := "/mnt/etc/systemd/journald.conf.d"
+	if !cfg.DryRun {
+		if err := os.MkdirAll(confDir, 0o755); err != nil {
+			log("Warning: create journald.conf.d: " + err.Error())
+			return nil
 		}
-	} else if cfg.ExtraServices["flatpak"] && cfg.DryRun {
-		log("[DRY RUN] Would configure Flathub repository")
-	}
-
-	// Zram configuration
-	if cfg.ExtraServices["zram"] {
-		log("Configuring zram-generator...")
-		if !cfg.DryRun {
-			confPath := "/mnt/etc/systemd/zram-generator.conf"
-			confDir := filepath.Dir(confPath)
-			os.MkdirAll(confDir, 0755)
-			confData := []byte("[zram0]\nzram-size = ram / 2\ncompression-algorithm = zstd\nswap-priority = 100\n")
-			if err := os.WriteFile(confPath, confData, 0644); err != nil {
-				log("Warning: Failed to write zram-generator.conf")
-			}
+		if err := writeChroot(confDir+"/00-persistence.conf", "[Journal]\nStorage=persistent\n"); err != nil {
+			log("Warning: write journald persistence config: " + err.Error())
 		} else {
-			log("[DRY RUN] Would write /etc/systemd/zram-generator.conf")
+			log("$ wrote /etc/systemd/journald.conf.d/00-persistence.conf")
 		}
+	} else {
+		log(styleGood("[DRY RUN] Would write: ") + "/etc/systemd/journald.conf.d/00-persistence.conf")
 	}
 
 	return nil
+}
+
+// EnableServices enables and disables systemd units from data/services.go.
+// Each enable is attempted unconditionally — if the unit doesn't exist
+// because the package wasn't installed, it fails as a warning and moves on.
+func EnableServices(cfg *config.InstallConfig, log LineHandler) error {
+	for _, svc := range data.Enable {
+		if err := RunChrootDry(cfg, log, "systemctl", "enable", svc); err != nil {
+			log("Warning: could not enable " + svc + ": " + err.Error())
+		}
+	}
+
+	for _, svc := range data.Disable {
+		if err := RunChrootDry(cfg, log, "systemctl", "disable", svc); err != nil {
+			log("Warning: could not disable " + svc + ": " + err.Error())
+		}
+	}
+
+	return RunChrootDry(cfg, log, "systemctl", "set-default", "graphical.target")
 }
