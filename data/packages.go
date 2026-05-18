@@ -324,6 +324,14 @@ var ByDE = map[string][]string{
 		"thunar-volman", "tumbler", "unzip", "xarchiver", "xbindkeys", "polybar",
 		"xdg-user-dirs-gtk", "xed", "xorg-xdpyinfo", "xss-lock", "zip",
 	},
+	"dwm": {
+		"acpi", "arandr", "archlinux-xdg-menu", "awesome-terminal-fonts",
+		"brightnessctl", "dex", "dmenu", "dunst", "feh", "gvfs", "gvfs-afc",
+		"gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "jq", "sddm", "berserk-sddm-theme",
+		"nwg-look", "mpv", "network-manager-applet", "numlockx", "playerctl", "polkit-kde-agent",
+		"rofi", "scrot", "sysstat", "thunar", "thunar-archive-plugin", "berserk-config-dwm",
+		"thunar-volman", "tumbler", "unzip", "xarchiver", "xbindkeys", "xdg-user-dirs-gtk", "xed", "xorg-xdpyinfo", "zip",
+	},
 	"openbox": {
 		"obmenu-generator", "berserk-config-openbox", "sddm", "berserk-sddm-theme",
 		"thunar",
