@@ -107,6 +107,8 @@ var Base = []string{
 	"berserk-hooks",
 	"berserk-rofi",
 	"berserk-default-themes",
+	"berserk-kernel",
+	"berserk-kernel-headers",
 	"berserk-grub-theme",
 	"berserk-omz",
 	"berserk-gtk-theme",
