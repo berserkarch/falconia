@@ -320,7 +320,7 @@ var ByDE = map[string][]string{
 		"acpi", "arandr", "archlinux-xdg-menu", "awesome-terminal-fonts",
 		"brightnessctl", "dex", "dmenu", "dunst", "feh", "gvfs", "gvfs-afc",
 		"gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "i3-wm", "i3blocks",
-		"i3lock", "i3status", "jq", "sddm", "berserk-sddm-theme", "nwg-look", "mpv",
+		"i3lock-color", "i3status", "jq", "sddm", "berserk-sddm-theme", "nwg-look", "mpv",
 		"network-manager-applet", "numlockx", "playerctl", "polkit-kde-agent",
 		"rofi", "scrot", "sysstat", "thunar", "thunar-archive-plugin", "berserk-config-i3wm",
 		"thunar-volman", "tumbler", "unzip", "xarchiver", "xbindkeys", "polybar",
