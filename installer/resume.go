@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -50,6 +51,10 @@ func FindResumeState(dryRun bool, ask PasswordPrompt, log LineHandler) (*State, 
 		return nil, fmt.Errorf("saved state is from a real install; resume it without --dry-run")
 	}
 	if !dryRun {
+		if busy := runningInstallTools(); len(busy) > 0 {
+			return nil, fmt.Errorf("%s from the previous run is still running; wait for it to exit (or kill it) first",
+				strings.Join(busy, ", "))
+		}
 		if err := remapDevices(s); err != nil {
 			return nil, err
 		}
@@ -58,6 +63,19 @@ func FindResumeState(dryRun bool, ask PasswordPrompt, log LineHandler) (*State, 
 		}
 	}
 	return s, nil
+}
+
+// runningInstallTools lists install commands that are still running, e.g.
+// orphaned when the installer was quit mid-step. Resuming alongside them would
+// run two package transactions against the same target.
+func runningInstallTools() []string {
+	var busy []string
+	for _, name := range []string{"pacstrap", "pacman", "arch-chroot", "dracut", "grub-install", "cryptsetup", "mkfs.btrfs", "mkfs.ext4", "mkfs.xfs"} {
+		if exec.Command("pgrep", "-x", name).Run() == nil {
+			busy = append(busy, name)
+		}
+	}
+	return busy
 }
 
 func loadStateFile(path string) (*State, error) {

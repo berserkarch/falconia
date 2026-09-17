@@ -262,8 +262,7 @@ func (m ProgressModel) Init() tea.Cmd {
 					// Release mounts, swap and LUKS so nothing holds the disk
 					// when the user resumes or starts over.
 					if m.saved.IsDone(data.StepPartitionDisk) || step.key == data.StepPartitionDisk {
-						logHandler("Releasing disks...")
-						_ = installer.Cleanup(m.cfg, logHandler)
+						installer.ReleaseDisk(m.cfg, logHandler)
 					}
 					m.ch <- InstallErrorMsg{Step: step.label, Err: err}
 					return

@@ -18,7 +18,7 @@ func PartitionDisk(cfg *config.InstallConfig, log LineHandler) error {
 	disk := cfg.Disk
 
 	// A previous attempt may still hold the disk (mounts, swap, open LUKS).
-	releaseDisk(cfg, log)
+	ReleaseDisk(cfg, log)
 
 	// Wipe existing signatures
 	if err := RunDry(cfg, log, "wipefs", "-a", disk); err != nil {
@@ -135,7 +135,7 @@ func partSuffix(disk string) string {
 // FormatDisks mkfs's each partition according to config.
 func FormatDisks(cfg *config.InstallConfig, log LineHandler) error {
 	// A previous attempt may still hold the partitions (mounts, swap, open LUKS).
-	releaseDisk(cfg, log)
+	ReleaseDisk(cfg, log)
 
 	if cfg.PartitionScheme == "manual" {
 		for mnt, part := range cfg.MountPoints {
@@ -367,10 +367,27 @@ func OpenLuks(cfg *config.InstallConfig, log LineHandler) error {
 		"cryptsetup", "open", rootPartition(cfg), "cryptroot", "-d", "-")
 }
 
-// releaseDisk undoes whatever a previous, interrupted attempt left behind so
-// the disk can be partitioned or formatted again. Errors are ignored: on a
-// fresh run there is simply nothing to release.
-func releaseDisk(cfg *config.InstallConfig, log LineHandler) {
+// swapoffTarget disables swap living on the install target (the swap
+// partition or /mnt/swapfile), leaving the live system's own swap (e.g. zram)
+// alone.
+func swapoffTarget(cfg *config.InstallConfig, log LineHandler) {
+	targets := []string{"/mnt/swapfile"}
+	if dev := partitionRoles(cfg)["swap"]; dev != "" {
+		targets = append(targets, dev)
+	}
+	for _, t := range targets {
+		if cfg.DryRun {
+			log(styleGood("[DRY RUN] Would execute: ") + "swapoff " + t)
+		} else if swapActive(t) {
+			_ = Run(log, "swapoff", t)
+		}
+	}
+}
+
+// ReleaseDisk undoes whatever a previous, interrupted attempt left behind so
+// the disk can be partitioned, formatted or resumed. Errors are ignored: when
+// nothing is held there is simply nothing to release.
+func ReleaseDisk(cfg *config.InstallConfig, log LineHandler) {
 	if cfg.DryRun {
 		return
 	}
@@ -436,9 +453,10 @@ func mountBtrfsSubvols(cfg *config.InstallConfig, log LineHandler, dev string) e
 	return nil
 }
 
-// Cleanup unmounts everything under /mnt, disables swap and closes LUKS.
+// Cleanup unmounts everything under /mnt, disables the target's swap and
+// closes LUKS.
 func Cleanup(cfg *config.InstallConfig, log LineHandler) error {
-	_ = RunDry(cfg, log, "swapoff", "-a")
+	swapoffTarget(cfg, log)
 	err := RunDry(cfg, log, "umount", "-R", "/mnt")
 	if err != nil && !cfg.DryRun {
 		// Something (e.g. a gpg-agent started inside the chroot) still holds a
