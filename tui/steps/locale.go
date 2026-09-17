@@ -72,6 +72,9 @@ func NewLocale(cfg *config.InstallConfig) LocaleModel {
 	return m
 }
 
+// EditingText implements TextEditor. Every locale field is a text input.
+func (m LocaleModel) EditingText() bool { return true }
+
 func (m LocaleModel) Init() tea.Cmd { return m.tzInput.Focus() }
 
 func (m LocaleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

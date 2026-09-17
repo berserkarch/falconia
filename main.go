@@ -31,8 +31,7 @@ func main() {
 
 	p := tea.NewProgram(
 		app,
-		tea.WithAltScreen(),       // full-screen TUI
-		tea.WithMouseCellMotion(), // optional mouse support
+		tea.WithAltScreen(), // full-screen TUI
 	)
 
 	if _, err := p.Run(); err != nil {

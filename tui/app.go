@@ -137,9 +137,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 
-		// Global quit
+		// Global quit — unless a text input has focus, where "q" is just a letter.
 		if msg.String() == "q" {
-			if a.phase == phase1 {
+			if a.phase == phase1 && !a.editingText() {
 				a.quitting = true
 				return a, nil
 			}
@@ -217,6 +217,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := a.current.Update(msg)
 	a.current = updated
 	return a, cmd
+}
+
+// editingText reports whether the active Phase 1 step has a focused text input.
+func (a App) editingText() bool {
+	e, ok := a.current.(steps.TextEditor)
+	return ok && e.EditingText()
 }
 
 const (

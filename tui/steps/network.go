@@ -152,6 +152,11 @@ func (m NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// EditingText implements TextEditor.
+func (m NetworkModel) EditingText() bool {
+	return m.cursor == netSSID || m.cursor == netPass
+}
+
 func (m *NetworkModel) updateFocus() {
 	m.ssid.Blur()
 	m.pass.Blur()

@@ -36,6 +36,9 @@ func NewHostname(cfg *config.InstallConfig) HostnameModel {
 	return HostnameModel{cfg: cfg, input: ti}
 }
 
+// EditingText implements TextEditor.
+func (m HostnameModel) EditingText() bool { return true }
+
 func (m HostnameModel) Init() tea.Cmd { return m.input.Focus() }
 
 func (m HostnameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -195,6 +198,11 @@ func NewUsers(cfg *config.InstallConfig) UsersModel {
 	}
 
 	return m
+}
+
+// EditingText implements TextEditor.
+func (m UsersModel) EditingText() bool {
+	return !m.rootDone || m.cursor <= userFieldPassConfirm
 }
 
 func (m UsersModel) Init() tea.Cmd {
