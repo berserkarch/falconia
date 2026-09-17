@@ -18,6 +18,8 @@ const (
 	StepSetupSwap      StepKey = "setup-swap"
 	StepCopyLiveFiles  StepKey = "copy-live-files"
 	StepPacstrap       StepKey = "pacstrap"
+	StepLuksKeyfile    StepKey = "luks-keyfile"
+	StepInitramfs      StepKey = "initramfs"
 	StepGenFstab       StepKey = "gen-fstab"
 	StepSetTimezone    StepKey = "set-timezone"
 	StepWriteCrypttab  StepKey = "write-crypttab"
@@ -33,6 +35,7 @@ const (
 	StepDetectWindows  StepKey = "detect-windows"
 	StepEnableServices StepKey = "enable-services"
 	StepPostCleanup    StepKey = "post-cleanup"
+	StepRemoveState    StepKey = "remove-state"
 	StepCleanup        StepKey = "cleanup"
 )
 
@@ -63,6 +66,10 @@ var Pipeline = []StepDef{
 	}},
 	{Key: StepCopyLiveFiles, Label: "Copy live environment files"},
 	{Key: StepPacstrap, Label: "Install base system (pacstrap)"},
+	{Key: StepLuksKeyfile, Label: "Add LUKS keyfile", When: func(c *config.InstallConfig) bool {
+		return c.EncryptDisk && c.Bootloader != "systemd-boot"
+	}},
+	{Key: StepInitramfs, Label: "Generate initramfs"},
 	{Key: StepGenFstab, Label: "Generate fstab"},
 	{Key: StepSetTimezone, Label: "Set timezone"},
 	{Key: StepWriteCrypttab, Label: "Write crypttab", When: func(c *config.InstallConfig) bool {
@@ -90,5 +97,17 @@ var Pipeline = []StepDef{
 	{Key: StepCreateUsers, Label: "Create users"},
 	{Key: StepEnableServices, Label: "Enable services"},
 	{Key: StepPostCleanup, Label: "Post-install cleanup"},
+	{Key: StepRemoveState, Label: "Remove resume data"},
 	{Key: StepCleanup, Label: "Unmount & cleanup", Soft: true},
+}
+
+// Steps returns the pipeline entries that apply to cfg, in order.
+func Steps(cfg *config.InstallConfig) []StepDef {
+	var steps []StepDef
+	for _, def := range Pipeline {
+		if def.When == nil || def.When(cfg) {
+			steps = append(steps, def)
+		}
+	}
+	return steps
 }

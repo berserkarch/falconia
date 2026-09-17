@@ -38,6 +38,14 @@ func SetupSwap(cfg *config.InstallConfig, log LineHandler) error {
 		return nil
 	}
 
+	// Remove a swap file left by a previous attempt so it is recreated cleanly.
+	if fileExists(swapPath) {
+		_ = Run(log, "swapoff", swapPath)
+		if err := os.Remove(swapPath); err != nil {
+			return fmt.Errorf("remove old swapfile: %w", err)
+		}
+	}
+
 	if cfg.Filesystem == "btrfs" {
 		// btrfs mkswapfile handles COW disable, permissions, and mkswap in one shot.
 		if err := Run(log, "btrfs", "filesystem", "mkswapfile",

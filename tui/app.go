@@ -75,6 +75,16 @@ func NewWithConfig(fn func(*config.InstallConfig)) App {
 	return app
 }
 
+// NewResume creates the root App model straight into Phase 2, continuing the
+// interrupted installation recorded in s.
+func NewResume(s *installer.State) App {
+	return App{
+		phase:    phase2,
+		cfg:      s.Config,
+		progress: steps.NewResumeProgress(s),
+	}
+}
+
 func (a *App) loadStep(id stepID) {
 	a.step = id
 	switch id {
@@ -106,6 +116,9 @@ func (a *App) loadStep(id stepID) {
 }
 
 func (a App) Init() tea.Cmd {
+	if a.phase == phase2 {
+		return a.progress.Init()
+	}
 	if a.current != nil {
 		return a.current.Init()
 	}
@@ -270,6 +283,10 @@ func (a App) renderSizeWarning() string {
 }
 
 func (a App) renderQuitConfirmation(baseView string) string {
+	warning := "All progress will be lost."
+	if a.phase == phase2 {
+		warning = "Resume later with falconia --resume."
+	}
 	dialog := lipgloss.NewStyle().
 		Width(50).
 		Height(8).
@@ -280,7 +297,7 @@ func (a App) renderQuitConfirmation(baseView string) string {
 		Render(
 			lipgloss.JoinVertical(lipgloss.Center,
 				style.StyleError.Render("QUIT INSTALLATION?"),
-				"\nAre you sure you want to exit?\nAll progress will be lost.\n",
+				"\nAre you sure you want to exit?\n"+warning+"\n",
 				style.HelpRow("y", "yes, quit", "n", "no, stay"),
 			),
 		)

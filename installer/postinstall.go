@@ -22,7 +22,7 @@ func InstallDesktop(cfg *config.InstallConfig, log LineHandler) error {
 		return nil
 	}
 
-	args := append([]string{"-S", "--noconfirm"}, pkgs...)
+	args := append([]string{"-S", "--noconfirm", "--needed"}, pkgs...)
 	return RunChrootDry(cfg, log, "pacman", args...)
 }
 
@@ -34,7 +34,7 @@ func InstallPackages(cfg *config.InstallConfig, log LineHandler) error {
 		return nil
 	}
 
-	args := append([]string{"-S", "--noconfirm"}, pkgs...)
+	args := append([]string{"-S", "--noconfirm", "--needed"}, pkgs...)
 	return RunChrootDry(cfg, log, "pacman", args...)
 }
 

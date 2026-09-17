@@ -20,13 +20,21 @@ func InstallBootloader(cfg *config.InstallConfig, log LineHandler) error {
 
 func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 	// Install GRUB package
-	if err := RunChrootDry(cfg, log, "pacman", "-S", "--noconfirm", "grub"); err != nil {
+	if err := RunChrootDry(cfg, log, "pacman", "-S", "--noconfirm", "--needed", "grub"); err != nil {
 		return err
 	}
 
 	if cfg.Firmware == "uefi" {
-		if err := RunChrootDry(cfg, log, "pacman", "-S", "--noconfirm", "efibootmgr"); err != nil {
+		if err := RunChrootDry(cfg, log, "pacman", "-S", "--noconfirm", "--needed", "efibootmgr"); err != nil {
 			return err
+		}
+	}
+
+	// The edits below append kernel params, so a re-run (on resume) must start
+	// from the pristine file rather than the one a previous attempt modified.
+	if !cfg.DryRun {
+		if err := restoreOrBackup(grubDefault, grubDefaultOrig); err != nil {
+			return fmt.Errorf("back up /etc/default/grub: %w", err)
 		}
 	}
 
@@ -169,7 +177,9 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 		return fmt.Errorf("systemd-boot requires UEFI firmware")
 	}
 
-	if err := RunChrootDry(cfg, log, "bootctl", "--path=/boot/efi", "install"); err != nil {
+	if !cfg.DryRun && fileExists("/mnt/boot/efi/EFI/systemd/systemd-bootx64.efi") {
+		log("systemd-boot already installed on the ESP, skipping bootctl install")
+	} else if err := RunChrootDry(cfg, log, "bootctl", "--path=/boot/efi", "install"); err != nil {
 		return fmt.Errorf("bootctl install: %w", err)
 	}
 
@@ -280,6 +290,28 @@ func installSystemdBoot(cfg *config.InstallConfig, log LineHandler) error {
 		log(styleGood("[DRY RUN] Would write file: ") + "/mnt/boot/efi/loader/loader.conf")
 		return nil
 	}
+}
+
+const (
+	grubDefault     = "/mnt/etc/default/grub"
+	grubDefaultOrig = grubDefault + ".falconia-orig"
+)
+
+// restoreOrBackup copies backup over path if the backup exists; otherwise it
+// saves path as the backup.
+func restoreOrBackup(path, backup string) error {
+	if fileExists(backup) {
+		return copyFile(backup, path)
+	}
+	return copyFile(path, backup)
+}
+
+func copyFile(src, dst string) error {
+	b, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, b, 0o644)
 }
 
 // rootPartition returns the block device path for the root partition.

@@ -4,6 +4,8 @@ import (
 	"falconia/config"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -14,6 +16,9 @@ func PartitionDisk(cfg *config.InstallConfig, log LineHandler) error {
 		return nil
 	}
 	disk := cfg.Disk
+
+	// A previous attempt may still hold the disk (mounts, swap, open LUKS).
+	releaseDisk(cfg, log)
 
 	// Wipe existing signatures
 	if err := RunDry(cfg, log, "wipefs", "-a", disk); err != nil {
@@ -129,6 +134,9 @@ func partSuffix(disk string) string {
 
 // FormatDisks mkfs's each partition according to config.
 func FormatDisks(cfg *config.InstallConfig, log LineHandler) error {
+	// A previous attempt may still hold the partitions (mounts, swap, open LUKS).
+	releaseDisk(cfg, log)
+
 	if cfg.PartitionScheme == "manual" {
 		for mnt, part := range cfg.MountPoints {
 			var mkfsCmd []string
@@ -221,7 +229,7 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 	if cfg.PartitionScheme == "manual" {
 		// Always mount root first
 		if rootPart, ok := cfg.MountPoints["/"]; ok {
-			if err := RunDry(cfg, log, "mount", rootPart, "/mnt"); err != nil {
+			if err := mountOnce(cfg, log, "/mnt", rootPart); err != nil {
 				return fmt.Errorf("mount root: %w", err)
 			}
 		} else {
@@ -241,14 +249,14 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 			} else {
 				log(styleGood("[DRY RUN] Would execute: ") + "mkdir -p " + fullMnt)
 			}
-			if err := RunDry(cfg, log, "mount", part, fullMnt); err != nil {
+			if err := mountOnce(cfg, log, fullMnt, part); err != nil {
 				return fmt.Errorf("mount %s: %w", mnt, err)
 			}
 		}
 
 		// Swap
 		if swapPart, ok := cfg.MountPoints["swap"]; ok {
-			if err := RunDry(cfg, log, "swapon", swapPart); err != nil {
+			if err := swaponOnce(cfg, log, swapPart); err != nil {
 				return fmt.Errorf("swapon: %w", err)
 			}
 		}
@@ -271,7 +279,7 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 			return err
 		}
 	} else {
-		if err := RunDry(cfg, log, "mount", rootPart, "/mnt"); err != nil {
+		if err := mountOnce(cfg, log, "/mnt", rootPart); err != nil {
 			return fmt.Errorf("mount root: %w", err)
 		}
 	}
@@ -286,19 +294,95 @@ func MountDisks(cfg *config.InstallConfig, log LineHandler) error {
 		} else {
 			log(styleGood("[DRY RUN] Would execute: ") + "mkdir -p " + efiMount)
 		}
-		if err := RunDry(cfg, log, "mount", disk+p+"1", efiMount); err != nil {
+		if err := mountOnce(cfg, log, efiMount, disk+p+"1"); err != nil {
 			return fmt.Errorf("mount EFI: %w", err)
 		}
 	}
 
 	// Enable swap partition (swap file is handled by SetupSwap)
 	if cfg.SwapMode == "partition" {
-		if err := RunDry(cfg, log, "swapon", swapPart); err != nil {
+		if err := swaponOnce(cfg, log, swapPart); err != nil {
 			return fmt.Errorf("swapon: %w", err)
 		}
 	}
 
 	return nil
+}
+
+// mountOnce mounts dev at target with optional extra mount args, unless
+// target is already a mountpoint (e.g. when resuming an install).
+func mountOnce(cfg *config.InstallConfig, log LineHandler, target, dev string, opts ...string) error {
+	if !cfg.DryRun && isMountpoint(target) {
+		log("Already mounted: " + target)
+		return nil
+	}
+	args := append(opts, dev, target)
+	return RunDry(cfg, log, "mount", args...)
+}
+
+// swaponOnce enables swap on path unless it is already active.
+func swaponOnce(cfg *config.InstallConfig, log LineHandler, path string) error {
+	if !cfg.DryRun && swapActive(path) {
+		log("Swap already active: " + path)
+		return nil
+	}
+	return RunDry(cfg, log, "swapon", path)
+}
+
+func isMountpoint(path string) bool {
+	return exec.Command("mountpoint", "-q", path).Run() == nil
+}
+
+// swapActive reports whether path (a device or swap file) is listed in /proc/swaps.
+func swapActive(path string) bool {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		resolved = path
+	}
+	data, err := os.ReadFile("/proc/swaps")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == resolved {
+			return true
+		}
+	}
+	return false
+}
+
+const cryptrootMapper = "/dev/mapper/cryptroot"
+
+// OpenLuks unlocks the root partition as cryptroot unless it is already open.
+func OpenLuks(cfg *config.InstallConfig, log LineHandler) error {
+	if cfg.DryRun {
+		log(styleGood("[DRY RUN] Would execute: ") + "cryptsetup open " + rootPartition(cfg) + " cryptroot")
+		return nil
+	}
+	if _, err := os.Stat(cryptrootMapper); err == nil {
+		log("LUKS already open: " + cryptrootMapper)
+		return nil
+	}
+	return runWithStdin(log, strings.NewReader(cfg.EncryptionPass),
+		"cryptsetup", "open", rootPartition(cfg), "cryptroot", "-d", "-")
+}
+
+// releaseDisk undoes whatever a previous, interrupted attempt left behind so
+// the disk can be partitioned or formatted again. Errors are ignored: on a
+// fresh run there is simply nothing to release.
+func releaseDisk(cfg *config.InstallConfig, log LineHandler) {
+	if cfg.DryRun {
+		return
+	}
+	if isMountpoint("/mnt") || fileExists(cryptrootMapper) {
+		log("Releasing mounts and devices left by a previous attempt...")
+		_ = Cleanup(cfg, log)
+	}
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // createBtrfsSubvols mounts dev at /mnt, creates the standard subvolume layout,
@@ -324,7 +408,7 @@ const btrfsMountOpts = "compress=zstd,noatime"
 // mountBtrfsSubvols mounts each btrfs subvolume under /mnt with zstd
 // compression and noatime.
 func mountBtrfsSubvols(cfg *config.InstallConfig, log LineHandler, dev string) error {
-	if err := RunDry(cfg, log, "mount", "-o", "subvol=/@,"+btrfsMountOpts, dev, "/mnt"); err != nil {
+	if err := mountOnce(cfg, log, "/mnt", dev, "-o", "subvol=/@,"+btrfsMountOpts); err != nil {
 		return fmt.Errorf("mount btrfs @: %w", err)
 	}
 
@@ -345,18 +429,23 @@ func mountBtrfsSubvols(cfg *config.InstallConfig, log LineHandler, dev string) e
 		} else {
 			log(styleGood("[DRY RUN] Would execute: ") + "mkdir -p " + sv.path)
 		}
-		if err := RunDry(cfg, log, "mount", "-o", "subvol=/"+sv.name+","+btrfsMountOpts, dev, sv.path); err != nil {
+		if err := mountOnce(cfg, log, sv.path, dev, "-o", "subvol=/"+sv.name+","+btrfsMountOpts); err != nil {
 			return fmt.Errorf("mount btrfs %s: %w", sv.name, err)
 		}
 	}
 	return nil
 }
 
-// Cleanup unmounts everything under /mnt and disables swap.
+// Cleanup unmounts everything under /mnt, disables swap and closes LUKS.
 func Cleanup(cfg *config.InstallConfig, log LineHandler) error {
 	_ = RunDry(cfg, log, "swapoff", "-a")
 	err := RunDry(cfg, log, "umount", "-R", "/mnt")
-	if cfg.EncryptDisk {
+	if err != nil && !cfg.DryRun {
+		// Something (e.g. a gpg-agent started inside the chroot) still holds a
+		// mount; detach lazily so the disk is released once it exits.
+		err = Run(log, "umount", "-R", "-l", "/mnt")
+	}
+	if (cfg.DryRun && cfg.EncryptDisk) || (!cfg.DryRun && fileExists(cryptrootMapper)) {
 		_ = RunDry(cfg, log, "cryptsetup", "close", "cryptroot")
 	}
 	return err

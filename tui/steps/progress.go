@@ -20,6 +20,7 @@ import (
 // ── Install step definitions ─────────────────────────────────────────────────
 
 type installStep struct {
+	key   data.StepKey
 	label string
 	soft  bool // if true, failure logs a warning and continues rather than aborting
 	run   func(*config.InstallConfig, installer.LineHandler) error
@@ -55,6 +56,12 @@ var stepRegistry = map[data.StepKey]func(*config.InstallConfig, installer.LineHa
 	},
 	data.StepPacstrap: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.Pacstrap(c, log)
+	},
+	data.StepLuksKeyfile: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.AddLuksKeyfile(c, log)
+	},
+	data.StepInitramfs: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.GenerateInitramfs(c, log)
 	},
 	data.StepGenFstab: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.GenFstab(c, log)
@@ -101,6 +108,9 @@ var stepRegistry = map[data.StepKey]func(*config.InstallConfig, installer.LineHa
 	data.StepPostCleanup: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.PostInstallCleanup(c, log)
 	},
+	data.StepRemoveState: func(c *config.InstallConfig, log installer.LineHandler) error {
+		return installer.RemoveState(c, log)
+	},
 	data.StepCleanup: func(c *config.InstallConfig, log installer.LineHandler) error {
 		return installer.Cleanup(c, log)
 	},
@@ -108,15 +118,12 @@ var stepRegistry = map[data.StepKey]func(*config.InstallConfig, installer.LineHa
 
 func buildSteps(cfg *config.InstallConfig) []installStep {
 	var steps []installStep
-	for _, def := range data.Pipeline {
-		if def.When != nil && !def.When(cfg) {
-			continue
-		}
+	for _, def := range data.Steps(cfg) {
 		fn, ok := stepRegistry[def.Key]
 		if !ok {
 			panic("no implementation registered for step: " + string(def.Key))
 		}
-		steps = append(steps, installStep{label: def.Label, soft: def.Soft, run: fn})
+		steps = append(steps, installStep{key: def.Key, label: def.Label, soft: def.Soft, run: fn})
 	}
 	return steps
 }
@@ -154,6 +161,8 @@ const (
 // time back into the bubbletea update loop for live streaming.
 type ProgressModel struct {
 	cfg     *config.InstallConfig
+	saved   *installer.State
+	resumed bool // state came from an interrupted run; restore mounts first
 	steps   []installStep
 	current int
 	state   progressState
@@ -167,14 +176,26 @@ type ProgressModel struct {
 	logFile *os.File
 }
 
+// NewProgress starts a fresh installation of cfg.
 func NewProgress(cfg *config.InstallConfig) ProgressModel {
+	return newProgress(installer.NewState(cfg), false)
+}
+
+// NewResumeProgress continues the interrupted installation recorded in s.
+func NewResumeProgress(s *installer.State) ProgressModel {
+	return newProgress(s, true)
+}
+
+func newProgress(s *installer.State, resumed bool) ProgressModel {
 	vp := viewport.New(80, 12)
 	// Initialize channel here so it's shared across all value copies of this struct.
 	// Channels are reference types, so copies of ProgressModel all share the same channel.
 	ch := make(chan tea.Msg, 256)
 	return ProgressModel{
-		cfg:      cfg,
-		steps:    buildSteps(cfg),
+		cfg:      s.Config,
+		saved:    s,
+		resumed:  resumed,
+		steps:    buildSteps(s.Config),
 		viewport: vp,
 		ch:       ch,
 	}
@@ -199,23 +220,61 @@ func (m ProgressModel) Init() tea.Cmd {
 			}
 		}()
 
+		logHandler := func(line string) {
+			m.ch <- LogLineMsg(line)
+			if m.logFile != nil {
+				// Strip ANSI escape codes before writing to log file
+				cleanLine := stripANSI(line)
+				m.logFile.WriteString(cleanLine + "\n")
+			}
+		}
+		// Persist progress after every step so the install can be resumed
+		// with --resume if it fails, is quit, or the machine reboots.
+		saving := true
+		save := func() {
+			if !saving {
+				return
+			}
+			if err := installer.SaveState(m.saved); err != nil {
+				logHandler("\033[33m⚠  Could not save resume state: " + err.Error() + "\033[0m")
+			}
+		}
+
+		if m.resumed {
+			logHandler("Restoring install environment...")
+			if err := installer.RestoreEnvironment(m.saved, logHandler); err != nil {
+				m.ch <- InstallErrorMsg{Step: "Restore install environment", Err: err}
+				return
+			}
+		} else {
+			save()
+		}
+
 		for i, step := range m.steps {
-			logHandler := func(line string) {
-				m.ch <- LogLineMsg(line)
-				if m.logFile != nil {
-					// Strip ANSI escape codes before writing to log file
-					cleanLine := stripANSI(line)
-					m.logFile.WriteString(cleanLine + "\n")
-				}
+			if m.saved.IsDone(step.key) {
+				m.ch <- StepCompleteMsg(i)
+				continue
 			}
 			if err := step.run(m.cfg, logHandler); err != nil {
 				if step.soft {
 					logHandler("\033[33m⚠  " + step.label + " failed (non-fatal): " + err.Error() + " — continuing\033[0m")
 				} else {
+					// Release mounts, swap and LUKS so nothing holds the disk
+					// when the user resumes or starts over.
+					if m.saved.IsDone(data.StepPartitionDisk) || step.key == data.StepPartitionDisk {
+						logHandler("Releasing disks...")
+						_ = installer.Cleanup(m.cfg, logHandler)
+					}
 					m.ch <- InstallErrorMsg{Step: step.label, Err: err}
 					return
 				}
 			}
+			if step.key == data.StepRemoveState {
+				// Resume data is gone; don't write it back.
+				saving = false
+			}
+			m.saved.MarkDone(step.key)
+			save()
 			m.ch <- StepCompleteMsg(i)
 		}
 		m.ch <- InstallDoneMsg{}
@@ -391,6 +450,19 @@ func (m ProgressModel) viewError() string {
 		b.WriteString(style.StyleSubtitle.Render("Full log:") + "\n")
 		b.WriteString(m.viewport.View() + "\n")
 	}
+
+	resumeCmd := "falconia --resume"
+	if m.cfg.DryRun {
+		resumeCmd = "falconia --dry-run --resume"
+	}
+	// Before the target is mounted, progress only lives in /tmp.
+	when := " to continue from this step (before rebooting)."
+	if m.saved.IsDone(data.StepMountDisks) {
+		when = " to continue from this step — even after a reboot."
+	}
+	b.WriteString(style.StyleMuted.Render("Progress is saved. Fix the problem, then run ") +
+		style.StyleValue.Render(resumeCmd) +
+		style.StyleMuted.Render(when) + "\n\n")
 
 	b.WriteString(style.HelpRow("↑↓", "scroll log", "q", "exit"))
 	return b.String()
