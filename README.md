@@ -16,6 +16,7 @@ Falconia ships as a single binary with no external config files. All package lis
 - Bootloaders: GRUB (UEFI + BIOS) and systemd-boot (UEFI only)
 - Automatic hardware detection: CPU microcode, NVIDIA (open or proprietary), Broadcom WiFi, VM guest tools
 - Windows dual-boot detection and boot entry generation
+- Resumable installs — continue from the failed step, even after a reboot
 - Dry-run mode — walk the full install pipeline without root or a real disk
 
 ---
@@ -34,6 +35,40 @@ For testing without a disk:
 falconia --dry-run
 ```
 
+### Resuming a failed install
+
+If a step fails (a slow mirror, a package that won't install), the installer
+releases the disk and keeps its progress. Fix the problem, then run:
+
+```bash
+sudo falconia --resume
+```
+
+It skips the steps that already finished, remounts the target and continues —
+partitioning and formatting are never repeated. After a reboot the progress is
+read back from the target disk.
+
+### Excluding packages
+
+Arch moves fast: a package in the install lists may be dropped from the repos
+or start conflicting. Leave it out with `--exclude` (comma-separated,
+repeatable), on a fresh install or when resuming:
+
+```bash
+sudo falconia --resume --exclude xterm,netctl
+```
+
+Exclusions are saved with the install progress and apply to pacstrap and every
+later pacman step. They only filter packages the installer names directly — if
+a dropped package is pulled in as a dependency, exclude the package that
+depends on it instead.
+
+> **Note:** until the install completes, the resume data holds every password
+> from the form in plain text: in `/tmp/falconia/`, in
+> `/var/lib/falconia/` on the target root, and (for LUKS) the passphrase in
+> `falconia-resume.json` on the unencrypted ESP. All copies are deleted when
+> the install finishes. If you abandon a failed install, wipe the disk.
+
 ### Navigation
 
 | Key | Action |
@@ -43,7 +78,7 @@ falconia --dry-run
 | `enter` | Confirm / advance |
 | `esc` | Go back |
 | `ctrl+a` | Toggle advanced mode |
-| `q` | Quit |
+| `q` | Quit (outside text fields) |
 
 Advanced mode unlocks swap size control (disk step) and package descriptions (packages step).
 

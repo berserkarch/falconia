@@ -174,6 +174,20 @@ func existingGroups() map[string]struct{} {
 	return groups
 }
 
+// userExists reports whether name has an entry in /mnt/etc/passwd.
+func userExists(name string) bool {
+	data, err := os.ReadFile("/mnt/etc/passwd")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if user, _, found := strings.Cut(line, ":"); found && user == name {
+			return true
+		}
+	}
+	return false
+}
+
 // CreateUsers creates all non-root users defined in config.
 func CreateUsers(cfg *config.InstallConfig, log LineHandler) error {
 	known := existingGroups()
@@ -196,7 +210,10 @@ func CreateUsers(cfg *config.InstallConfig, log LineHandler) error {
 			args = append(args, "-G", strings.Join(filtered, ","))
 		}
 		args = append(args, u.Username)
-		if err := RunChrootDry(cfg, log, "useradd", args...); err != nil {
+		if !cfg.DryRun && userExists(u.Username) {
+			// Created by a previous attempt; just (re)set the password below.
+			log("User " + u.Username + " already exists, skipping useradd")
+		} else if err := RunChrootDry(cfg, log, "useradd", args...); err != nil {
 			return fmt.Errorf("useradd %s: %w", u.Username, err)
 		}
 

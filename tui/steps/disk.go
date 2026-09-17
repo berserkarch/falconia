@@ -214,6 +214,9 @@ func (m DiskModel) isTextInput() bool {
 		m.cursor == diskFieldEncConf
 }
 
+// EditingText implements TextEditor.
+func (m DiskModel) EditingText() bool { return m.isTextInput() }
+
 // swapSizeVisible reports whether the swap size input should be shown.
 func (m DiskModel) swapSizeVisible() bool {
 	mode := swapModes[m.swapModeIdx]

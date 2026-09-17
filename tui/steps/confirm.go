@@ -118,6 +118,9 @@ func (m ConfirmModel) View() string {
 	if len(cfg.ExtraPackages) > 0 {
 		row("Packages", m.formatFoldableList(cfg.ExtraPackages))
 	}
+	if len(cfg.ExcludePackages) > 0 {
+		row("Excluded", m.formatFoldableList(cfg.ExcludePackages))
+	}
 	b.WriteString("\n")
 
 	if cfg.RankMirrors {

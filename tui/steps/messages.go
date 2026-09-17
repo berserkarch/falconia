@@ -38,6 +38,13 @@ func EmitLaunchCfdisk(disk string) tea.Cmd {
 	return func() tea.Msg { return LaunchCfdiskMsg{Disk: disk} }
 }
 
+// TextEditor is an optional interface for models that contain text inputs.
+// EditingText reports whether a text input currently has focus, in which case
+// global single-key shortcuts (like "q") must be passed through as typed text.
+type TextEditor interface {
+	EditingText() bool
+}
+
 // Saveable is an optional interface for models that can persist their state
 // to the shared config object. This is used when toggling advanced mode.
 type Saveable interface {

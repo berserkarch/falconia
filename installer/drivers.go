@@ -39,8 +39,7 @@ func installGPUDrivers(cfg *config.InstallConfig, log LineHandler) error {
 				log("Warning: no driver package registered for " + key)
 				continue
 			}
-			args := append([]string{"-S", "--noconfirm"}, pkgs...)
-			if err := RunChrootDry(cfg, log, "pacman", args...); err != nil {
+			if err := pacmanInstall(cfg, log, pkgs...); err != nil {
 				return fmt.Errorf("install NVIDIA driver: %w", err)
 			}
 		case "intel":
@@ -54,7 +53,7 @@ func installGPUDrivers(cfg *config.InstallConfig, log LineHandler) error {
 	// Hybrid Intel + NVIDIA needs nvidia-prime for GPU switching
 	if hasNvidia && hasIntel {
 		log("Hybrid GPU detected — installing nvidia-prime")
-		if err := RunChrootDry(cfg, log, "pacman", "-S", "--noconfirm", "nvidia-prime"); err != nil {
+		if err := pacmanInstall(cfg, log, "nvidia-prime"); err != nil {
 			log(fmt.Sprintf("Warning: nvidia-prime: %v", err))
 		}
 	}
@@ -96,8 +95,7 @@ func installWiFiDrivers(cfg *config.InstallConfig, log LineHandler) error {
 		log("Warning: no driver package registered for " + key)
 		return nil
 	}
-	args := append([]string{"-S", "--noconfirm"}, pkgs...)
-	if err := RunChrootDry(cfg, log, "pacman", args...); err != nil {
+	if err := pacmanInstall(cfg, log, pkgs...); err != nil {
 		return fmt.Errorf("install Broadcom driver: %w", err)
 	}
 	return nil
@@ -112,8 +110,7 @@ func installVMTools(cfg *config.InstallConfig, log LineHandler) error {
 		return nil
 	}
 	log(fmt.Sprintf("VM: %s detected — installing guest tools", cfg.Hardware.VM))
-	args := append([]string{"-S", "--noconfirm"}, pkgs...)
-	if err := RunChrootDry(cfg, log, "pacman", args...); err != nil {
+	if err := pacmanInstall(cfg, log, pkgs...); err != nil {
 		return fmt.Errorf("install VM tools: %w", err)
 	}
 	// power-profiles-daemon is meaningless inside a VM

@@ -37,12 +37,12 @@ type InstallConfig struct {
 	SwapMode        string // "none" | "partition" | "file" | "suspend"
 	SwapSize        int    // MiB; used for partition/file modes; ignored for suspend (auto-sized to RAM)
 	EncryptDisk     bool
-	EncryptionPass  string // never written to disk or logged
+	EncryptionPass  string // never logged; saved in the resume state (see installer.State)
 
 	// --- Network ---
 	NetworkMode string // "wifi" | "ethernet" | "skip"
 	WifiSSID    string
-	WifiPass    string // never written to disk or logged
+	WifiPass    string // never logged; saved in the resume state
 
 	// --- Locale ---
 	Timezone string // e.g. "Asia/Kolkata"
@@ -53,7 +53,7 @@ type InstallConfig struct {
 	Hostname string
 
 	// --- Users ---
-	RootPassword string // never logged
+	RootPassword string // never logged; saved in the resume state
 	Users        []User
 
 	// --- Kernel ---
@@ -64,6 +64,11 @@ type InstallConfig struct {
 
 	// --- Extra Packages ---
 	ExtraPackages []string
+
+	// ExcludePackages are removed from every package list the installer
+	// passes to pacstrap/pacman (set with --exclude), e.g. packages that were
+	// dropped from the repos or conflict.
+	ExcludePackages []string
 
 	// --- Bootloader ---
 	Bootloader  string // "grub" | "systemd-boot"
@@ -83,7 +88,7 @@ type InstallConfig struct {
 // User represents a non-root user to be created.
 type User struct {
 	Username string
-	Password string   // never logged
+	Password string   // never logged; saved in the resume state
 	Shell    string   // "/bin/bash" | "/bin/zsh" | "/bin/fish"
 	Groups   []string // e.g. ["wheel", "audio", "video"]
 }
@@ -114,4 +119,3 @@ func (c *InstallConfig) BootloaderOptions() []string {
 	}
 	return []string{"grub"}
 }
-

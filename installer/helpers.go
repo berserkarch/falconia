@@ -14,17 +14,6 @@ func writeChroot(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-// appendFile appends content to a file, creating it if needed.
-func appendFile(path, content string) error {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = f.WriteString(content)
-	return err
-}
-
 // runOutput runs a command and returns combined output as a trimmed string.
 func runOutput(name string, args ...string) (string, error) {
 	out, err := exec.Command(name, args...).CombinedOutput()
