@@ -31,6 +31,7 @@ func Pacstrap(cfg *config.InstallConfig, log LineHandler) error {
 		AddIf(cfg.EncryptDisk, data.Encryption...).
 		AddMap(data.ByMicrocode, cfg.Hardware.CPU).
 		Build()
+	pkgs = withoutExcluded(cfg, log, pkgs)
 
 	args := append([]string{"/mnt", "--needed"}, pkgs...)
 	return RunDry(cfg, log, "pacstrap", args...)

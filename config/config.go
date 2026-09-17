@@ -65,6 +65,11 @@ type InstallConfig struct {
 	// --- Extra Packages ---
 	ExtraPackages []string
 
+	// ExcludePackages are removed from every package list the installer
+	// passes to pacstrap/pacman (set with --exclude), e.g. packages that were
+	// dropped from the repos or conflict.
+	ExcludePackages []string
+
 	// --- Bootloader ---
 	Bootloader  string // "grub" | "systemd-boot"
 	GrubTimeout int    // seconds (GRUB only)
@@ -114,4 +119,3 @@ func (c *InstallConfig) BootloaderOptions() []string {
 	}
 	return []string{"grub"}
 }
-

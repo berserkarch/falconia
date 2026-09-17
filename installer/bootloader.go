@@ -20,12 +20,12 @@ func InstallBootloader(cfg *config.InstallConfig, log LineHandler) error {
 
 func installGrub(cfg *config.InstallConfig, log LineHandler) error {
 	// Install GRUB package
-	if err := RunChrootDry(cfg, log, "pacman", "-S", "--noconfirm", "--needed", "grub"); err != nil {
+	if err := pacmanInstall(cfg, log, "grub"); err != nil {
 		return err
 	}
 
 	if cfg.Firmware == "uefi" {
-		if err := RunChrootDry(cfg, log, "pacman", "-S", "--noconfirm", "--needed", "efibootmgr"); err != nil {
+		if err := pacmanInstall(cfg, log, "efibootmgr"); err != nil {
 			return err
 		}
 	}

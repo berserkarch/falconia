@@ -22,8 +22,7 @@ func InstallDesktop(cfg *config.InstallConfig, log LineHandler) error {
 		return nil
 	}
 
-	args := append([]string{"-S", "--noconfirm", "--needed"}, pkgs...)
-	return RunChrootDry(cfg, log, "pacman", args...)
+	return pacmanInstall(cfg, log, pkgs...)
 }
 
 // InstallPackages installs user-selected extra packages.
@@ -34,8 +33,7 @@ func InstallPackages(cfg *config.InstallConfig, log LineHandler) error {
 		return nil
 	}
 
-	args := append([]string{"-S", "--noconfirm", "--needed"}, pkgs...)
-	return RunChrootDry(cfg, log, "pacman", args...)
+	return pacmanInstall(cfg, log, pkgs...)
 }
 
 // PostInstallCleanup performs final housekeeping on the installed system.
